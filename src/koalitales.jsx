@@ -45,7 +45,7 @@ const PERMISSION_LABELS = {
 const INIT = {
   assoc: { name: "", logo: null, address: "", email: "", phone: "", iban: "", siret: "", note: "", bankBalance: 0 },
   events: [], catalog: [], invoices: [], inventory: [], meetings: [], prestations: [],
-  depenses: [], roles: [], depensesPool: [], contacts: [], tickets: [],
+  depenses: [], roles: [], depensesPool: [], contacts: [], tickets: [], todos: [],
 };
 const ROLE_COLORS = ["#9d6fe8","#4db8ff","#4affa0","#ffb84d","#ff4d72","#c84dff","#ff4dda","#4dffe8","#f0a500","#00c9a7"];
 
@@ -375,7 +375,7 @@ export default function App() {
       {needsIdentification && <WhoAreYouModal pool={pool} username={session.user.username} onLink={handleLinkToPool} />}
       <Nav page={page} go={(p) => { setPage(p); setEventId(null); }} session={session} onLogout={handleLogout} can={can} isMobile={isMobile} onAvatarChange={handleAvatarChange} users={users} data={data} />
       <main style={{ flex: 1, padding: isMobile ? "20px 16px" : "40px 48px", overflowY: "auto", maxHeight: "100vh" }}>
-        {page === "dashboard"    && <Dashboard data={data} goEvent={goEvent} go={p => { setPage(p); setEventId(null); }} session={session} />}
+        {page === "dashboard"    && <Dashboard data={data} goEvent={goEvent} go={p => { setPage(p); setEventId(null); }} session={session} update={update} can={can} />}
         {page === "equipe"       && <EquipePage users={users} data={data} update={update} can={can} session={session} />}
         {page === "events"       && <EventsList data={data} update={update} goEvent={goEvent} can={can} />}
         {page === "eventDetail"  && <EventDetail data={data} update={update} eventId={eventId} back={() => setPage("events")} can={can} users={users} contacts={data.contacts||[]} />}
@@ -386,6 +386,7 @@ export default function App() {
         {page === "contacts"     && <ContactsPage data={data} update={update} />}
         {page === "compta"       && <ComptaPage data={data} update={update} can={can} session={session} />}
         {page === "depenses"     && <DepensesPage data={data} update={update} users={users} session={session} can={can} />}
+        {page === "todos"        && <TodosPage data={data} update={update} session={session} can={can} />}
         {page === "tickets"      && <TicketsPage data={data} update={update} session={session} can={can} />}
         {page === "logs"         && <LogsPage />}
         {page === "settings"     && (can("settings")           ? <SettingsPage data={data} update={update} /> : <AccessDenied />)}
@@ -645,6 +646,7 @@ function Nav({ page, go, session, onLogout, can, isMobile, onAvatarChange, users
     { id: "contacts",    icon: "◉", label: "Contacts",           always: true },
     { id: "depenses",    icon: "€", label: "Dépenses",          always: true },
     { id: "compta",      icon: "⊞", label: "Comptabilité",      always: true },
+    { id: "todos",        icon: "☑", label: "Tâches",             always: true },
     { id: "tickets",     icon: "◎", label: "Boîte à idées",     always: true },
     { id: "logs",        icon: "≡", label: "Journal",           always: true },
     { id: "settings",   icon: "⚙", label: "Association",       perm: "settings" },
@@ -749,7 +751,7 @@ function Nav({ page, go, session, onLogout, can, isMobile, onAvatarChange, users
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
-function Dashboard({ data, goEvent, go, session }) {
+function Dashboard({ data, goEvent, go, session, update, can }) {
   const todayStr = today();
   const events      = data.events      || [];
   const meetings    = data.meetings    || [];
@@ -907,6 +909,52 @@ function Dashboard({ data, goEvent, go, session }) {
           </div>
         )}
       </div>
+
+      {/* Mes tâches */}
+      {(() => {
+        const username = session?.user?.username;
+        const myTodos  = (data.todos || []).filter(t => t.status !== "terminé" && t.assignees?.includes(username));
+        if (!username || myTodos.length === 0) return null;
+        const prioColor = { haute: C.danger, normale: C.info, basse: C.muted };
+        const stColor   = { à_faire: C.muted, en_cours: C.warn, terminé: C.accent };
+        const isAdmin   = can && can("web_admin");
+        const setStatus = (id, status) => update({ todos: (data.todos||[]).map(t => t.id !== id ? t : { ...t, status, statusBy: username, statusAt: today() }) });
+        return (
+          <div style={s.card({ marginBottom: "24px" })}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+              <div style={{ fontFamily: C.display, fontWeight: "700", fontSize: "15px" }}>
+                Mes tâches
+                <span style={{ fontSize: "12px", color: C.warn, fontWeight: "400", marginLeft: "8px" }}>{myTodos.length} en cours</span>
+              </div>
+              <button style={s.btn("ghost", { padding: "4px 10px", fontSize: "11px" })} onClick={() => go("todos")}>Tout voir →</button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              {myTodos.map(t => {
+                const co = (t.assignees || []).filter(a => a !== username);
+                const canChange = isAdmin || t.assignees?.includes(username);
+                return (
+                  <div key={t.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px", background: C.card2, borderRadius: "8px", borderLeft: `3px solid ${prioColor[t.priority] || C.info}`, flexWrap: "wrap" }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: "600", fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</div>
+                      <div style={{ fontSize: "11px", color: C.muted, marginTop: "2px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                        {t.dueDate && <span>📅 {t.dueDate}</span>}
+                        {co.length > 0 && <span>👥 avec {co.join(", ")}</span>}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: "6px", alignItems: "center", flexShrink: 0 }}>
+                      <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", background: `${stColor[t.status]}20`, color: stColor[t.status], border: `1px solid ${stColor[t.status]}40` }}>
+                        {t.status === "à_faire" ? "À faire" : t.status === "en_cours" ? "En cours" : "Terminé"}
+                      </span>
+                      {canChange && t.status === "à_faire"  && <button onClick={() => setStatus(t.id, "en_cours")} style={s.btn("secondary", { padding: "3px 9px", fontSize: "11px" })}>→ Démarrer</button>}
+                      {canChange && t.status === "en_cours" && <button onClick={() => setStatus(t.id, "terminé")} style={s.btn("primary",    { padding: "3px 9px", fontSize: "11px" })}>✓ Terminer</button>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Graphiques */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "20px", marginBottom: "24px" }}>
@@ -4429,6 +4477,266 @@ function ComptaPage({ data, update, can, session }) {
               </div>
           }
         </div>
+      )}
+    </div>
+  );
+}
+
+// ── TÂCHES (TO-DO) ────────────────────────────────────────────────────────────
+const TODO_PRIORITIES = ["normale", "haute", "basse"];
+const PRIO_COLORS = { haute: C => C.danger, normale: C => C.info, basse: C => C.muted };
+const TODO_STATUS = {
+  à_faire:  { label: "À faire",  color: C => C.muted  },
+  en_cours: { label: "En cours", color: C => C.warn   },
+  terminé:  { label: "Terminé",  color: C => C.accent },
+};
+
+function TodosPage({ data, update, session, can }) {
+  const isMobile = useMobile();
+  const username = session?.user?.username;
+  const isAdmin  = can("web_admin");
+  const pool     = data.depensesPool || [];
+  const todos    = data.todos || [];
+
+  const [tab, setTab]           = useState("actives");
+  const [formOpen, setFormOpen] = useState(false);
+  const [form, setForm]         = useState({ title: "", description: "", assignees: [], dueDate: "", priority: "normale" });
+  const [expanded, setExpanded] = useState(null);
+  const [filter, setFilter]     = useState(""); // filtre par assigné
+
+  const active   = todos.filter(t => t.status !== "terminé");
+  const done     = todos.filter(t => t.status === "terminé");
+
+  const toggleAssignee = (name) => setForm(f => ({
+    ...f,
+    assignees: f.assignees.includes(name) ? f.assignees.filter(a => a !== name) : [...f.assignees, name],
+  }));
+
+  const submit = () => {
+    if (!form.title.trim()) return;
+    const todo = {
+      id: uid(), title: form.title.trim(), description: form.description.trim(),
+      assignees: form.assignees, createdBy: username, createdAt: today(),
+      dueDate: form.dueDate || null, priority: form.priority,
+      status: "à_faire", statusBy: null, statusAt: null,
+    };
+    update({ todos: [todo, ...todos] }, { action: "AJOUT", target: "Tâches", details: form.title });
+    setForm({ title: "", description: "", assignees: [], dueDate: "", priority: "normale" });
+    setFormOpen(false);
+  };
+
+  const setStatus = (id, status) => {
+    update({
+      todos: todos.map(t => t.id !== id ? t : { ...t, status, statusBy: username, statusAt: today() })
+    }, { action: "MODIF", target: "Tâches", details: `${status} — ${todos.find(t=>t.id===id)?.title}` });
+  };
+
+  const deleteTodo = (id) => {
+    if (!confirm("Supprimer cette tâche ?")) return;
+    update({ todos: todos.filter(t => t.id !== id) });
+  };
+
+  const canChange = (t) => isAdmin || (t.assignees || []).includes(username);
+
+  // Tous les noms disponibles pour l'assignation (pool + username courant si absent)
+  const allNames = pool.length > 0 ? pool.map(p => p.name) : (username ? [username] : []);
+
+  const filteredActive = filter ? active.filter(t => (t.assignees||[]).includes(filter)) : active;
+  const filteredDone   = filter ? done.filter(t => (t.assignees||[]).includes(filter)) : done;
+
+  const TodoCard = ({ t }) => {
+    const isOpen   = expanded === t.id;
+    const co       = (t.assignees || []).filter(a => a !== username);
+    const stConf   = TODO_STATUS[t.status] || TODO_STATUS.à_faire;
+    const prioConf = PRIO_COLORS[t.priority] || PRIO_COLORS.normale;
+    const isOverdue = t.dueDate && t.dueDate < today() && t.status !== "terminé";
+
+    return (
+      <div style={{ background: C.card2, borderRadius: "10px", border: `1px solid ${isOverdue ? C.danger+"60" : C.border}`, overflow: "hidden" }}>
+        <div onClick={() => setExpanded(isOpen ? null : t.id)}
+          style={{ display: "flex", alignItems: "center", gap: "10px", padding: "12px 14px", cursor: "pointer" }}>
+          {/* Indicateur priorité */}
+          <div style={{ width: "4px", alignSelf: "stretch", borderRadius: "4px", background: prioConf(C), flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "4px" }}>
+              <span style={{ fontWeight: "600", fontSize: "14px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
+              <span style={{ fontSize: "11px", fontWeight: "600", padding: "2px 8px", borderRadius: "20px", background: `${stConf.color(C)}20`, color: stConf.color(C), border: `1px solid ${stConf.color(C)}40`, flexShrink: 0 }}>
+                {stConf.label}
+              </span>
+              {isOverdue && <span style={{ fontSize: "10px", color: C.danger, background: `${C.danger}15`, padding: "2px 7px", borderRadius: "20px", flexShrink: 0 }}>En retard</span>}
+            </div>
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+              {/* Assignés */}
+              {(t.assignees||[]).length > 0 && (
+                <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+                  {(t.assignees||[]).map(a => (
+                    <span key={a} style={{ fontSize: "11px", padding: "1px 7px", borderRadius: "20px", background: a === username ? `${C.accent}25` : C.card, border: `1px solid ${a === username ? C.accent+"60" : C.border}`, color: a === username ? C.accent : C.muted }}>
+                      {a === username ? "Moi" : a}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {t.dueDate && (
+                <span style={{ fontSize: "11px", color: isOverdue ? C.danger : C.muted }}>📅 {t.dueDate}</span>
+              )}
+              {t.createdBy && <span style={{ fontSize: "11px", color: C.muted }}>créé par {t.createdBy}</span>}
+            </div>
+          </div>
+          <span style={{ color: C.muted, fontSize: "12px", flexShrink: 0 }}>{isOpen ? "▲" : "▼"}</span>
+        </div>
+
+        {isOpen && (
+          <div style={{ padding: "0 14px 14px", borderTop: `1px solid ${C.border}` }}>
+            {t.description ? (
+              <p style={{ fontSize: "13px", marginTop: "12px", lineHeight: "1.6", whiteSpace: "pre-wrap" }}>{t.description}</p>
+            ) : (
+              <p style={{ fontSize: "13px", color: C.muted, marginTop: "12px", fontStyle: "italic" }}>Pas de description.</p>
+            )}
+            {t.statusBy && <p style={{ fontSize: "11px", color: C.muted, marginTop: "8px" }}>Dernier statut par {t.statusBy} le {t.statusAt}</p>}
+
+            {/* Actions statut */}
+            {canChange(t) && (
+              <div style={{ display: "flex", gap: "8px", marginTop: "14px", flexWrap: "wrap" }}>
+                {t.status !== "à_faire"  && <button onClick={() => setStatus(t.id, "à_faire")}  style={s.btn("ghost",     { fontSize: "12px", padding: "5px 12px" })}>← À faire</button>}
+                {t.status !== "en_cours" && <button onClick={() => setStatus(t.id, "en_cours")} style={s.btn("secondary", { fontSize: "12px", padding: "5px 12px" })}>→ En cours</button>}
+                {t.status !== "terminé"  && <button onClick={() => setStatus(t.id, "terminé")}  style={s.btn("primary",   { fontSize: "12px", padding: "5px 12px" })}>✓ Terminer</button>}
+                {isAdmin && <button onClick={() => deleteTodo(t.id)} style={s.btn("danger", { fontSize: "12px", padding: "5px 10px" })}>✕</button>}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "6px", flexWrap: "wrap", gap: "10px" }}>
+        <div>
+          <h1 style={{ fontFamily: C.display, fontSize: isMobile ? "22px" : "26px", fontWeight: "800", letterSpacing: "-0.8px" }}>Tâches</h1>
+          {!isMobile && <p style={{ color: C.muted, fontSize: "14px", marginTop: "4px" }}>Suivi des tâches collectives et individuelles</p>}
+        </div>
+        <div style={{ display: "flex", gap: "2px", borderBottom: `1px solid ${C.border}` }}>
+          {[
+            { id: "actives",  label: `Actives (${active.length})`  },
+            { id: "terminées",label: `Terminées (${done.length})`   },
+          ].map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: isMobile ? "8px 12px" : "8px 16px", background: "none", border: "none", cursor: "pointer", borderBottom: `2px solid ${tab === t.id ? C.accent : "transparent"}`, color: tab === t.id ? C.accent : C.muted, fontFamily: C.font, fontSize: "13px", fontWeight: tab === t.id ? "600" : "400", marginBottom: "-1px" }}>{t.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* KPIs */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: "12px", marginBottom: "20px" }}>
+        {[
+          { label: "À faire",  val: todos.filter(t=>t.status==="à_faire").length,  color: C.muted  },
+          { label: "En cours", val: todos.filter(t=>t.status==="en_cours").length, color: C.warn   },
+          { label: "Terminées",val: done.length,                                    color: C.accent },
+          { label: "Mes tâches",val: todos.filter(t=>t.status!=="terminé"&&(t.assignees||[]).includes(username)).length, color: C.info },
+        ].map(k => (
+          <div key={k.label} style={s.card({ padding: "14px 16px" })}>
+            <div style={s.label}>{k.label}</div>
+            <div style={{ fontFamily: C.mono, fontSize: "22px", color: k.color, marginTop: "4px" }}>{k.val}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Formulaire */}
+      <div style={s.card({ marginBottom: "16px" })}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: formOpen ? "16px" : 0 }}>
+          <div style={{ fontFamily: C.display, fontWeight: "700", fontSize: "14px" }}>Nouvelle tâche</div>
+          <button onClick={() => setFormOpen(v => !v)} style={s.btn(formOpen ? "ghost" : "primary", { padding: "6px 14px", fontSize: "12px" })}>
+            {formOpen ? "Annuler" : "+ Ajouter"}
+          </button>
+        </div>
+        {formOpen && (
+          <div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr auto", gap: "10px", marginBottom: "10px" }}>
+              <div style={isMobile ? { gridColumn: "1/-1" } : {}}>
+                <label style={s.label}>Titre *</label>
+                <input style={s.inp()} value={form.title} placeholder="Ex: Préparer le planning…" autoFocus
+                  onChange={e => setForm({...form, title: e.target.value})} onKeyDown={e => e.key==="Enter" && submit()} />
+              </div>
+              <div>
+                <label style={s.label}>Échéance</label>
+                <input type="date" style={s.inp()} value={form.dueDate} onChange={e => setForm({...form, dueDate: e.target.value})} />
+              </div>
+              <div>
+                <label style={s.label}>Priorité</label>
+                <select style={s.inp()} value={form.priority} onChange={e => setForm({...form, priority: e.target.value})}>
+                  {TODO_PRIORITIES.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ marginBottom: "10px" }}>
+              <label style={s.label}>Description (optionnel)</label>
+              <textarea style={{ ...s.inp(), resize: "vertical", minHeight: "60px" }} value={form.description}
+                placeholder="Détails de la tâche…" onChange={e => setForm({...form, description: e.target.value})} />
+            </div>
+            {/* Assignation depuis le pool */}
+            <div style={{ marginBottom: "14px" }}>
+              <label style={s.label}>Assigner à ({form.assignees.length} sélectionné{form.assignees.length>1?"s":""})</label>
+              {allNames.length === 0
+                ? <p style={{ fontSize: "12px", color: C.muted, fontStyle: "italic" }}>Aucun membre dans le pool — ajoutez des participants dans la page Dépenses.</p>
+                : <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "6px" }}>
+                    {allNames.map(name => {
+                      const sel = form.assignees.includes(name);
+                      return (
+                        <span key={name} onClick={() => toggleAssignee(name)} style={{
+                          cursor: "pointer", userSelect: "none",
+                          padding: "4px 12px", borderRadius: "20px", fontSize: "13px",
+                          background: sel ? `${C.accent}20` : "transparent",
+                          border: `1px solid ${sel ? C.accent : C.border}`,
+                          color: sel ? C.accent : C.muted,
+                        }}>
+                          {sel ? "✓ " : ""}{name}
+                        </span>
+                      );
+                    })}
+                  </div>
+              }
+            </div>
+            <button style={s.btn("primary")} onClick={submit} disabled={!form.title.trim()}>Créer la tâche</button>
+          </div>
+        )}
+      </div>
+
+      {/* Filtre par assigné */}
+      {allNames.length > 1 && (
+        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "14px" }}>
+          <span onClick={() => setFilter("")} style={{ cursor: "pointer", userSelect: "none", padding: "3px 10px", borderRadius: "20px", fontSize: "12px", background: !filter ? `${C.accent}20` : "transparent", border: `1px solid ${!filter ? C.accent : C.border}`, color: !filter ? C.accent : C.muted }}>
+            Tous
+          </span>
+          {allNames.map(name => (
+            <span key={name} onClick={() => setFilter(filter === name ? "" : name)} style={{ cursor: "pointer", userSelect: "none", padding: "3px 10px", borderRadius: "20px", fontSize: "12px", background: filter===name ? `${C.accent}20` : "transparent", border: `1px solid ${filter===name ? C.accent : C.border}`, color: filter===name ? C.accent : C.muted }}>
+              {name === username ? "Moi" : name}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Liste */}
+      {tab === "actives" && (
+        filteredActive.length === 0
+          ? <div style={{ textAlign: "center", padding: "60px 20px", color: C.muted }}>
+              <div style={{ fontSize: "36px", marginBottom: "12px" }}>☑</div>
+              <div style={{ fontSize: "14px" }}>{filter ? `Aucune tâche active pour ${filter}.` : "Aucune tâche active."}</div>
+            </div>
+          : <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {filteredActive.sort((a,b) => {
+                const po = { haute: 0, normale: 1, basse: 2 };
+                return (po[a.priority]||1) - (po[b.priority]||1) || (a.dueDate||"9").localeCompare(b.dueDate||"9");
+              }).map(t => <TodoCard key={t.id} t={t} />)}
+            </div>
+      )}
+
+      {tab === "terminées" && (
+        filteredDone.length === 0
+          ? <div style={{ textAlign: "center", padding: "60px 20px", color: C.muted, fontSize: "14px" }}>Aucune tâche terminée.</div>
+          : <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {filteredDone.map(t => <TodoCard key={t.id} t={t} />)}
+            </div>
       )}
     </div>
   );
