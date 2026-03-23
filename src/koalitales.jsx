@@ -45,7 +45,7 @@ const PERMISSION_LABELS = {
 const INIT = {
   assoc: { name: "", logo: null, address: "", email: "", phone: "", iban: "", siret: "", note: "", bankBalance: 0 },
   events: [], catalog: [], invoices: [], inventory: [], meetings: [], prestations: [],
-  depenses: [], roles: [], depensesPool: [], contacts: [],
+  depenses: [], roles: [], depensesPool: [], contacts: [], tickets: [],
 };
 const ROLE_COLORS = ["#9d6fe8","#4db8ff","#4affa0","#ffb84d","#ff4d72","#c84dff","#ff4dda","#4dffe8","#f0a500","#00c9a7"];
 
@@ -386,6 +386,7 @@ export default function App() {
         {page === "contacts"     && <ContactsPage data={data} update={update} />}
         {page === "compta"       && <ComptaPage data={data} update={update} can={can} session={session} />}
         {page === "depenses"     && <DepensesPage data={data} update={update} users={users} session={session} can={can} />}
+        {page === "tickets"      && <TicketsPage data={data} update={update} session={session} can={can} />}
         {page === "logs"         && <LogsPage />}
         {page === "settings"     && (can("settings")           ? <SettingsPage data={data} update={update} /> : <AccessDenied />)}
         {page === "users"        && (can("manage_users")       ? <UserManagementPage session={session} data={data} update={update} /> : <AccessDenied />)}
@@ -644,6 +645,7 @@ function Nav({ page, go, session, onLogout, can, isMobile, onAvatarChange, users
     { id: "contacts",    icon: "◉", label: "Contacts",           always: true },
     { id: "depenses",    icon: "€", label: "Dépenses",          always: true },
     { id: "compta",      icon: "⊞", label: "Comptabilité",      always: true },
+    { id: "tickets",     icon: "◎", label: "Boîte à idées",     always: true },
     { id: "logs",        icon: "≡", label: "Journal",           always: true },
     { id: "settings",   icon: "⚙", label: "Association",       perm: "settings" },
     { id: "users",       icon: "◈", label: "Utilisateurs",      perm: "manage_users" },
@@ -4426,6 +4428,224 @@ function ComptaPage({ data, update, can, session }) {
                 {[...confirmed].reverse().map(r => <EntryRow key={`${r.source}-${r.id}`} r={r} action={unconfirmEntry} actionLabel="Annuler clôture" actionStyle="ghost" />)}
               </div>
           }
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── BOÎTE À IDÉES / TICKETS ───────────────────────────────────────────────────
+const TICKET_CATS = ["Idée", "Amélioration", "Bug", "Autre"];
+const TICKET_STATUTS = {
+  ouvert:    { label: "Ouvert",    color: C => C.info   },
+  en_cours:  { label: "En cours",  color: C => C.warn   },
+  terminé:   { label: "Terminé",   color: C => C.accent },
+};
+
+function TicketsPage({ data, update, session, can }) {
+  const isAdmin  = can("web_admin");
+  const username = session?.user?.username;
+  const tickets  = data.tickets || [];
+  const isMobile = useMobile();
+
+  const [tab, setTab]         = useState("ouverts");
+  const [form, setForm]       = useState({ title: "", description: "", category: "Idée" });
+  const [formOpen, setFormOpen] = useState(false);
+  const [expanded, setExpanded] = useState(null);
+
+  const open     = tickets.filter(t => t.status !== "terminé");
+  const archived = tickets.filter(t => t.status === "terminé");
+
+  const submit = () => {
+    if (!form.title.trim()) return;
+    const ticket = {
+      id: uid(), title: form.title.trim(), description: form.description.trim(),
+      category: form.category, createdBy: username, createdAt: today(),
+      status: "ouvert", statusBy: null, statusAt: null,
+    };
+    update({ tickets: [ticket, ...tickets] }, { action: "AJOUT", target: "Tickets", details: form.title });
+    setForm({ title: "", description: "", category: "Idée" });
+    setFormOpen(false);
+  };
+
+  const setStatus = (id, status) => {
+    update({
+      tickets: tickets.map(t => t.id !== id ? t : {
+        ...t, status, statusBy: username, statusAt: today(),
+      })
+    }, { action: "MODIF", target: "Tickets", details: `${status} — ${tickets.find(t=>t.id===id)?.title}` });
+  };
+
+  const deleteTicket = (id) => {
+    if (!confirm("Supprimer ce ticket ?")) return;
+    update({ tickets: tickets.filter(t => t.id !== id) });
+  };
+
+  const StatusBadge = ({ status }) => {
+    const s = TICKET_STATUTS[status] || TICKET_STATUTS.ouvert;
+    return (
+      <span style={{ fontSize: "11px", fontWeight: "600", padding: "2px 9px", borderRadius: "20px", background: `${s.color(C)}20`, color: s.color(C), border: `1px solid ${s.color(C)}40`, flexShrink: 0 }}>
+        {s.label}
+      </span>
+    );
+  };
+
+  const TicketCard = ({ t }) => {
+    const isOpen = expanded === t.id;
+    return (
+      <div style={{ background: C.card2, borderRadius: "10px", border: `1px solid ${C.border}`, overflow: "hidden" }}>
+        {/* En-tête cliquable */}
+        <div onClick={() => setExpanded(isOpen ? null : t.id)}
+          style={{ display: "flex", alignItems: "center", gap: "10px", padding: "12px 16px", cursor: "pointer" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "3px" }}>
+              <span style={{ fontWeight: "600", fontSize: "14px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
+              <StatusBadge status={t.status} />
+            </div>
+            <div style={{ fontSize: "11px", color: C.muted }}>
+              <span style={{ background: `${C.border}`, borderRadius: "4px", padding: "1px 6px", marginRight: "6px" }}>{t.category}</span>
+              {t.createdBy} · {t.createdAt}
+              {t.statusBy && t.status === "terminé" && <span> · clôturé par {t.statusBy} le {t.statusAt}</span>}
+            </div>
+          </div>
+          <span style={{ color: C.muted, fontSize: "12px", flexShrink: 0 }}>{isOpen ? "▲" : "▼"}</span>
+        </div>
+
+        {/* Détail déplié */}
+        {isOpen && (
+          <div style={{ padding: "0 16px 14px", borderTop: `1px solid ${C.border}` }}>
+            {t.description ? (
+              <p style={{ fontSize: "13px", color: C.text, marginTop: "12px", lineHeight: "1.6", whiteSpace: "pre-wrap" }}>{t.description}</p>
+            ) : (
+              <p style={{ fontSize: "13px", color: C.muted, marginTop: "12px", fontStyle: "italic" }}>Pas de description.</p>
+            )}
+
+            {/* Actions admin */}
+            {isAdmin && (
+              <div style={{ display: "flex", gap: "8px", marginTop: "14px", flexWrap: "wrap" }}>
+                {t.status === "ouvert" && (
+                  <button onClick={() => setStatus(t.id, "en_cours")} style={s.btn("secondary", { fontSize: "12px", padding: "5px 12px" })}>
+                    → En cours
+                  </button>
+                )}
+                {t.status === "en_cours" && (
+                  <button onClick={() => setStatus(t.id, "ouvert")} style={s.btn("ghost", { fontSize: "12px", padding: "5px 12px" })}>
+                    ← Réouvrir
+                  </button>
+                )}
+                {t.status !== "terminé" && (
+                  <button onClick={() => setStatus(t.id, "terminé")} style={s.btn("primary", { fontSize: "12px", padding: "5px 12px" })}>
+                    ✓ Marquer terminé
+                  </button>
+                )}
+                {t.status === "terminé" && (
+                  <button onClick={() => setStatus(t.id, "ouvert")} style={s.btn("ghost", { fontSize: "12px", padding: "5px 12px" })}>
+                    ↺ Réouvrir
+                  </button>
+                )}
+                <button onClick={() => deleteTicket(t.id)} style={s.btn("danger", { fontSize: "12px", padding: "5px 10px" })}>✕</button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "6px", flexWrap: "wrap", gap: "10px" }}>
+        <div>
+          <h1 style={{ fontFamily: C.display, fontSize: isMobile ? "22px" : "26px", fontWeight: "800", letterSpacing: "-0.8px" }}>Boîte à idées</h1>
+          {!isMobile && <p style={{ color: C.muted, fontSize: "14px", marginTop: "4px" }}>Suggestions, améliorations et signalements</p>}
+        </div>
+        <div style={{ display: "flex", gap: "2px", borderBottom: `1px solid ${C.border}` }}>
+          {[
+            { id: "ouverts",  label: `Ouverts (${open.length})`       },
+            { id: "archive",  label: `Archive (${archived.length})`    },
+          ].map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: isMobile ? "8px 12px" : "8px 16px", background: "none", border: "none", cursor: "pointer", borderBottom: `2px solid ${tab === t.id ? C.accent : "transparent"}`, color: tab === t.id ? C.accent : C.muted, fontFamily: C.font, fontSize: "13px", fontWeight: tab === t.id ? "600" : "400", marginBottom: "-1px" }}>{t.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* KPIs */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: "12px", marginBottom: "20px" }}>
+        {[
+          { label: "Ouverts",   val: tickets.filter(t=>t.status==="ouvert").length,   color: C.info   },
+          { label: "En cours",  val: tickets.filter(t=>t.status==="en_cours").length,  color: C.warn   },
+          { label: "Terminés",  val: archived.length,                                  color: C.accent },
+        ].map(k => (
+          <div key={k.label} style={s.card({ padding: "14px 16px" })}>
+            <div style={s.label}>{k.label}</div>
+            <div style={{ fontFamily: C.mono, fontSize: "22px", color: k.color, marginTop: "4px" }}>{k.val}</div>
+          </div>
+        ))}
+      </div>
+
+      {tab === "ouverts" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          {/* Formulaire */}
+          <div style={s.card()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: formOpen ? "16px" : 0 }}>
+              <div style={{ fontFamily: C.display, fontWeight: "700", fontSize: "14px" }}>Soumettre une idée ou un signalement</div>
+              <button onClick={() => setFormOpen(v => !v)} style={s.btn(formOpen ? "ghost" : "primary", { padding: "6px 14px", fontSize: "12px" })}>
+                {formOpen ? "Annuler" : "+ Nouveau"}
+              </button>
+            </div>
+            {formOpen && (
+              <div>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr auto", gap: "10px", marginBottom: "10px" }}>
+                  <div>
+                    <label style={s.label}>Titre *</label>
+                    <input style={s.inp()} value={form.title} placeholder="Ex: Ajouter un export CSV…" onChange={e => setForm({ ...form, title: e.target.value })}
+                      onKeyDown={e => e.key === "Enter" && submit()} autoFocus />
+                  </div>
+                  <div>
+                    <label style={s.label}>Catégorie</label>
+                    <select style={s.inp()} value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
+                      {TICKET_CATS.map(c => <option key={c}>{c}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div style={{ marginBottom: "12px" }}>
+                  <label style={s.label}>Description (optionnel)</label>
+                  <textarea style={{ ...s.inp(), resize: "vertical", minHeight: "72px" }} value={form.description}
+                    placeholder="Décris l'idée ou le problème en détail…"
+                    onChange={e => setForm({ ...form, description: e.target.value })} />
+                </div>
+                <button style={s.btn("primary", { padding: "9px 20px" })} onClick={submit} disabled={!form.title.trim()}>
+                  Soumettre
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Liste des tickets ouverts */}
+          {open.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "60px 20px", color: C.muted }}>
+              <div style={{ fontSize: "36px", marginBottom: "12px" }}>◎</div>
+              <div style={{ fontSize: "14px" }}>Aucune idée ou signalement pour l'instant.</div>
+              <div style={{ fontSize: "12px", marginTop: "6px" }}>Sois le premier à en soumettre une !</div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {open.map(t => <TicketCard key={t.id} t={t} />)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "archive" && (
+        <div>
+          {archived.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "60px 20px", color: C.muted, fontSize: "14px" }}>Aucun ticket clôturé pour l'instant.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {archived.map(t => <TicketCard key={t.id} t={t} />)}
+            </div>
+          )}
         </div>
       )}
     </div>
