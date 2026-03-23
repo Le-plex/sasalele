@@ -256,6 +256,7 @@ export default function App() {
   const [authMode, setAuthMode] = useState(null);
   const [session, setSession] = useState(null);
   const [users, setUsers] = useState([]);
+  const [notifDismissed, setNotifDismissed] = useState(() => localStorage.getItem("kt_notif_dismissed") || "");
   const isMobile = useMobile();
 
   const can = useCallback((perm) => {
@@ -369,12 +370,24 @@ export default function App() {
   const pool = data.depensesPool || [];
   const needsIdentification = session && pool.length > 0 && (session.user.linkedPoolName === null || session.user.linkedPoolName === undefined);
 
+  const notif = data.notification || {};
+  const showBanner = notif.active && notif.message && notif.date !== notifDismissed;
+  const dismissBanner = () => { localStorage.setItem("kt_notif_dismissed", notif.date); setNotifDismissed(notif.date); };
+
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: C.bg, color: C.text }}>
+    <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", minHeight: "100vh", background: C.bg, color: C.text }}>
       <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
       {needsIdentification && <WhoAreYouModal pool={pool} username={session.user.username} onLink={handleLinkToPool} />}
       <Nav page={page} go={(p) => { setPage(p); setEventId(null); }} session={session} onLogout={handleLogout} can={can} isMobile={isMobile} onAvatarChange={handleAvatarChange} users={users} data={data} />
-      <main style={{ flex: 1, padding: isMobile ? "20px 16px" : "40px 48px", overflowY: "auto", maxHeight: "100vh" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", ...(isMobile ? {} : { maxHeight: "100vh" }) }}>
+        {showBanner && (
+          <div style={{ background: `${C.info}18`, borderBottom: `1px solid ${C.info}40`, padding: "10px 24px", display: "flex", alignItems: "center", gap: "12px", flexShrink: 0 }}>
+            <span style={{ fontSize: "16px" }}>📣</span>
+            <span style={{ flex: 1, fontSize: "13px", color: C.info }}>{notif.message}</span>
+            <button onClick={dismissBanner} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: "16px", lineHeight: 1 }}>✕</button>
+          </div>
+        )}
+      <main style={{ flex: 1, padding: isMobile ? "20px 16px" : "40px 48px", overflowY: "auto" }}>
         {page === "dashboard"    && <Dashboard data={data} goEvent={goEvent} go={p => { setPage(p); setEventId(null); }} session={session} update={update} can={can} />}
         {page === "equipe"       && <EquipePage users={users} data={data} update={update} can={can} session={session} />}
         {page === "events"       && <EventsList data={data} update={update} goEvent={goEvent} can={can} />}
@@ -388,11 +401,11 @@ export default function App() {
         {page === "depenses"     && <DepensesPage data={data} update={update} users={users} session={session} can={can} />}
         {page === "todos"        && <TodosPage data={data} update={update} session={session} can={can} />}
         {page === "tickets"      && <TicketsPage data={data} update={update} session={session} can={can} />}
-        {page === "logs"         && <LogsPage />}
         {page === "settings"     && (can("settings")           ? <SettingsPage data={data} update={update} /> : <AccessDenied />)}
         {page === "users"        && (can("manage_users")       ? <UserManagementPage session={session} data={data} update={update} /> : <AccessDenied />)}
         {page === "maintenance"  && (can("web_admin")           ? <MaintenancePage data={data} update={update} /> : <AccessDenied />)}
       </main>
+      </div>
     </div>
   );
 }
@@ -493,22 +506,22 @@ function LoginPage({ onLogin }) {
 
         {mode === "login" ? (
           <div style={s.card()}>
+            <form onSubmit={e => { e.preventDefault(); submit(); }} autoComplete="on">
             <div style={{ marginBottom: "14px" }}>
               <label style={s.label}>Identifiant</label>
-              <input type="text" style={s.inp()} value={form.username} placeholder="admin"
-                onChange={e => setForm({ ...form, username: e.target.value })}
-                onKeyDown={e => e.key === "Enter" && submit()} autoFocus />
+              <input type="text" name="username" autoComplete="username" style={s.inp()} value={form.username} placeholder="admin"
+                onChange={e => setForm({ ...form, username: e.target.value })} autoFocus />
             </div>
             <div style={{ marginBottom: "18px" }}>
               <label style={s.label}>Mot de passe</label>
-              <input type="password" style={s.inp()} value={form.password} placeholder="••••••••"
-                onChange={e => setForm({ ...form, password: e.target.value })}
-                onKeyDown={e => e.key === "Enter" && submit()} />
+              <input type="password" name="password" autoComplete="current-password" style={s.inp()} value={form.password} placeholder="••••••••"
+                onChange={e => setForm({ ...form, password: e.target.value })} />
             </div>
             {error && <div style={{ color: C.danger, fontSize: "12px", marginBottom: "12px" }}>{error}</div>}
-            <button style={s.btn("primary", { width: "100%", padding: "12px" })} onClick={submit} disabled={loading}>
+            <button type="submit" style={s.btn("primary", { width: "100%", padding: "12px" })} disabled={loading}>
               {loading ? "Connexion…" : "Se connecter"}
             </button>
+            </form>
             <div style={{ textAlign: "center", marginTop: "16px" }}>
               <button onClick={() => { setMode("register"); setError(""); }} style={{ background: "none", border: "none", color: C.muted, fontSize: "12px", cursor: "pointer", textDecoration: "underline" }}>
                 J'ai un code d'invitation →
@@ -518,23 +531,24 @@ function LoginPage({ onLogin }) {
         ) : (
           <div style={s.card()}>
             <div style={{ fontFamily: C.display, fontWeight: "700", fontSize: "14px", marginBottom: "16px" }}>Inscription avec invitation</div>
+            <form onSubmit={e => { e.preventDefault(); submitRegister(); }} autoComplete="on">
             {[
-              { k:"code", l:"Code d'invitation", ph:"EX: AB1C2D", type:"text" },
-              { k:"username", l:"Identifiant souhaité", ph:"mon_pseudo", type:"text" },
-              { k:"password", l:"Mot de passe", ph:"••••••••", type:"password" },
-              { k:"confirm", l:"Confirmer le mot de passe", ph:"••••••••", type:"password" },
-            ].map(({ k, l, ph, type }) => (
+              { k:"code", l:"Code d'invitation", ph:"EX: AB1C2D", type:"text", ac:"off" },
+              { k:"username", l:"Identifiant souhaité", ph:"mon_pseudo", type:"text", ac:"username" },
+              { k:"password", l:"Mot de passe", ph:"••••••••", type:"password", ac:"new-password" },
+              { k:"confirm", l:"Confirmer le mot de passe", ph:"••••••••", type:"password", ac:"new-password" },
+            ].map(({ k, l, ph, type, ac }) => (
               <div key={k} style={{ marginBottom: "12px" }}>
                 <label style={s.label}>{l}</label>
-                <input type={type} style={s.inp()} value={regForm[k]} placeholder={ph}
-                  onChange={e => setRegForm({ ...regForm, [k]: e.target.value })}
-                  onKeyDown={e => e.key === "Enter" && submitRegister()} />
+                <input type={type} name={k} autoComplete={ac} style={s.inp()} value={regForm[k]} placeholder={ph}
+                  onChange={e => setRegForm({ ...regForm, [k]: e.target.value })} />
               </div>
             ))}
             {error && <div style={{ color: C.danger, fontSize: "12px", marginBottom: "12px" }}>{error}</div>}
-            <button style={s.btn("primary", { width: "100%", padding: "12px" })} onClick={submitRegister} disabled={loading}>
+            <button type="submit" style={s.btn("primary", { width: "100%", padding: "12px" })} disabled={loading}>
               {loading ? "Création…" : "Créer mon compte"}
             </button>
+            </form>
             <div style={{ textAlign: "center", marginTop: "14px" }}>
               <button onClick={() => { setMode("login"); setError(""); }} style={{ background: "none", border: "none", color: C.muted, fontSize: "12px", cursor: "pointer", textDecoration: "underline" }}>
                 ← Retour à la connexion
@@ -603,6 +617,23 @@ function WhoAreYouModal({ pool, username, onLink }) {
 
 function Nav({ page, go, session, onLogout, can, isMobile, onAvatarChange, users, data = {} }) {
   const [open, setOpen] = useState(false);
+  const [ticketsSeenAt, setTicketsSeenAt] = useState(() => localStorage.getItem("kt_tickets_seen") || "");
+
+  const isWebAdmin = can && can("web_admin");
+  const unreadTickets = useMemo(() => {
+    if (!isWebAdmin) return 0;
+    return (data.tickets || []).filter(t => t.status !== "terminé" && (!ticketsSeenAt || t.createdAt > ticketsSeenAt)).length;
+  }, [data.tickets, ticketsSeenAt, isWebAdmin]);
+
+  const goWithTicketMark = (id) => {
+    if (id === "tickets" && isWebAdmin) {
+      const now = new Date().toISOString();
+      localStorage.setItem("kt_tickets_seen", now);
+      setTicketsSeenAt(now);
+    }
+    go(id);
+    setOpen(false);
+  };
 
   // Calcul du solde personnel de l'utilisateur connecté
   const myName = session?.user?.username;
@@ -648,7 +679,6 @@ function Nav({ page, go, session, onLogout, can, isMobile, onAvatarChange, users
     { id: "compta",      icon: "⊞", label: "Comptabilité",      always: true },
     { id: "todos",        icon: "☑", label: "Tâches",             always: true },
     { id: "tickets",     icon: "◎", label: "Boîte à idées",     always: true },
-    { id: "logs",        icon: "≡", label: "Journal",           always: true },
     { id: "settings",   icon: "⚙", label: "Association",       perm: "settings" },
     { id: "users",       icon: "◈", label: "Utilisateurs",      perm: "manage_users" },
     { id: "maintenance", icon: "🔧", label: "Maintenance",       perm: "web_admin" },
@@ -666,18 +696,23 @@ function Nav({ page, go, session, onLogout, can, isMobile, onAvatarChange, users
         {isMobile && <button onClick={() => setOpen(false)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: "20px" }}>✕</button>}
       </div>
       <div style={{ padding: "12px 0", flex: 1, overflowY: "auto" }}>
-        {items.map(({ id, icon, label }) => (
-          <button key={id} onClick={() => { go(id); setOpen(false); }} style={{
-            display: "flex", alignItems: "center", gap: "10px",
-            padding: "11px 24px", background: isActive(id) ? `${C.accent}12` : "transparent",
-            border: "none", borderLeft: `2px solid ${isActive(id) ? C.accent : "transparent"}`,
-            cursor: "pointer", color: isActive(id) ? C.accent : C.muted,
-            fontFamily: C.font, fontSize: "13px", fontWeight: isActive(id) ? "500" : "400",
-            width: "100%", textAlign: "left", transition: "all 0.15s",
-          }}>
-            <span style={{ fontSize: "15px", lineHeight: 1 }}>{icon}</span>{label}
-          </button>
-        ))}
+        {items.map(({ id, icon, label }) => {
+          const badge = id === "tickets" && unreadTickets > 0 ? unreadTickets : 0;
+          return (
+            <button key={id} onClick={() => goWithTicketMark(id)} style={{
+              display: "flex", alignItems: "center", gap: "10px",
+              padding: "11px 24px", background: isActive(id) ? `${C.accent}12` : "transparent",
+              border: "none", borderLeft: `2px solid ${isActive(id) ? C.accent : "transparent"}`,
+              cursor: "pointer", color: isActive(id) ? C.accent : C.muted,
+              fontFamily: C.font, fontSize: "13px", fontWeight: isActive(id) ? "500" : "400",
+              width: "100%", textAlign: "left", transition: "all 0.15s",
+            }}>
+              <span style={{ fontSize: "15px", lineHeight: 1 }}>{icon}</span>
+              <span style={{ flex: 1 }}>{label}</span>
+              {badge > 0 && <span style={{ background: C.danger, color: "#fff", fontSize: "10px", fontWeight: "700", borderRadius: "20px", padding: "1px 6px", minWidth: "18px", textAlign: "center" }}>{badge}</span>}
+            </button>
+          );
+        })}
       </div>
       {session && (
         <div style={{ padding: "14px 18px", borderTop: `1px solid ${C.border}` }}>
@@ -5409,18 +5444,49 @@ function UserManagementPage({ session, data, update }) {
 // ── MAINTENANCE ───────────────────────────────────────────────────────────────
 function MaintenancePage({ data, update }) {
   const m = data.maintenance || { enabled: false, message: "" };
+  const n = data.notification || { active: false, message: "", date: "" };
   const [msg, setMsg] = useState(m.message || "");
+  const [notifMsg, setNotifMsg] = useState(n.message || "");
   const [saved, setSaved] = useState(false);
+  const [notifSaved, setNotifSaved] = useState(false);
+  const [tab, setTab] = useState("maintenance");
+
+  const sendNotif = () => {
+    if (!notifMsg.trim()) return;
+    update({ notification: { active: true, message: notifMsg.trim(), date: new Date().toISOString() } });
+    setNotifSaved("sent"); setTimeout(() => setNotifSaved(false), 2000);
+  };
+  const clearNotif = () => {
+    update({ notification: { active: false, message: "", date: "" } });
+    setNotifMsg("");
+    setNotifSaved("cleared"); setTimeout(() => setNotifSaved(false), 2000);
+  };
 
   const save = (patch) => {
     update({ maintenance: { ...m, ...patch } });
     setSaved(true); setTimeout(() => setSaved(false), 2000);
   };
 
+  const TABS = [{ id: "maintenance", label: "🔧 Maintenance" }, { id: "logs", label: "≡ Journal" }];
+
   return (
     <div>
-      <h1 style={{ fontFamily: C.display, fontSize: "26px", fontWeight: "800", marginBottom: "6px", letterSpacing: "-0.8px" }}>Maintenance</h1>
-      <p style={{ color: C.muted, marginBottom: "28px", fontSize: "14px" }}>En mode maintenance, les utilisateurs sans permission "Administration web" voient un écran de blocage.</p>
+      <h1 style={{ fontFamily: C.display, fontSize: "26px", fontWeight: "800", marginBottom: "6px", letterSpacing: "-0.8px" }}>Administration</h1>
+      <p style={{ color: C.muted, marginBottom: "20px", fontSize: "14px" }}>Outils d'administration du site.</p>
+      <div style={{ display: "flex", gap: "6px", marginBottom: "24px", borderBottom: `1px solid ${C.border}`, paddingBottom: "0" }}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            background: "none", border: "none", cursor: "pointer",
+            padding: "8px 16px", fontSize: "13px", fontFamily: C.font,
+            color: tab === t.id ? C.accent : C.muted,
+            borderBottom: `2px solid ${tab === t.id ? C.accent : "transparent"}`,
+            marginBottom: "-1px", transition: "color 0.15s",
+          }}>{t.label}</button>
+        ))}
+      </div>
+
+      {tab === "logs" && <LogsPage />}
+      {tab === "maintenance" && (<div>
 
       <div style={s.card({ marginBottom: "16px" })}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "18px" }}>
@@ -5453,6 +5519,37 @@ function MaintenancePage({ data, update }) {
         </button>
       </div>
 
+      <div style={s.card({ marginBottom: "16px" })}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
+          <div>
+            <div style={{ fontFamily: C.display, fontWeight: "700", fontSize: "15px" }}>Notification globale</div>
+            <div style={{ color: C.muted, fontSize: "12px", marginTop: "3px" }}>Affiche une bannière à tous les utilisateurs connectés</div>
+          </div>
+          {n.active && <span style={{ fontSize: "11px", padding: "3px 10px", borderRadius: "20px", background: `${C.info}18`, color: C.info }}>● Active</span>}
+        </div>
+        {n.active && (
+          <div style={{ padding: "10px 14px", background: `${C.info}12`, border: `1px solid ${C.info}40`, borderRadius: "8px", marginBottom: "14px", fontSize: "13px", color: C.info }}>
+            📣 Bannière active : « {n.message} »
+          </div>
+        )}
+        <div style={{ marginBottom: "12px" }}>
+          <label style={s.label}>Message à diffuser</label>
+          <textarea style={{ ...s.inp(), resize: "vertical", height: "70px" }} value={notifMsg}
+            onChange={e => setNotifMsg(e.target.value)}
+            placeholder="Réunion ce soir à 20h — ne manquez pas ça !" />
+        </div>
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          <button style={s.btn("primary")} onClick={sendNotif} disabled={!notifMsg.trim()}>
+            {notifSaved === "sent" ? "✓ Envoyé !" : "📣 Envoyer la notification"}
+          </button>
+          {n.active && (
+            <button style={s.btn("danger")} onClick={clearNotif}>
+              {notifSaved === "cleared" ? "✓ Supprimée !" : "✕ Effacer la bannière"}
+            </button>
+          )}
+        </div>
+      </div>
+
       <div style={s.card()}>
         <div style={{ fontFamily: C.display, fontWeight: "700", fontSize: "14px", marginBottom: "12px" }}>Aperçu de l'écran de maintenance</div>
         <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: "10px", padding: "40px", display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
@@ -5463,6 +5560,7 @@ function MaintenancePage({ data, update }) {
           </div>
         </div>
       </div>
+      </div>)}
     </div>
   );
 }
