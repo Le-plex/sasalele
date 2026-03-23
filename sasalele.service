@@ -1,0 +1,15 @@
+[Unit]
+Description=Sasalele — App de gestion associative Koalisons
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root
+ExecStart=/usr/bin/node /root/node_modules/.bin/vite --port 80 --host 0.0.0.0
+Restart=on-failure
+RestartSec=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

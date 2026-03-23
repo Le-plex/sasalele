@@ -1,0 +1,17 @@
+# Ignorer tout par défaut, puis inclure uniquement les fichiers du projet
+/*
+!/src/
+!/data/
+!/index.html
+!/vite.config.js
+!/package.json
+!/package-lock.json
+!/install.sh
+!/sasalele.service
+!/README.md
+!/CLAUDE.md
+!/.gitignore
+
+# Dans data/ : ignorer les données opérationnelles
+data/*.json
+data/uploads/
