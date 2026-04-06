@@ -92,9 +92,11 @@ function makeApiPlugin() {
         const filePath = path.join(UPLOADS_DIR, path.basename(filename))
         if (!fs.existsSync(filePath)) { res.statusCode = 404; res.end('Not found'); return }
         const ext = path.extname(filename).toLowerCase()
+        const buf = fs.readFileSync(filePath)
         res.setHeader('Content-Type', MIME_TYPES[ext] || 'application/octet-stream')
+        res.setHeader('Content-Length', buf.length)
         res.setHeader('Cache-Control', 'public, max-age=31536000')
-        res.end(fs.readFileSync(filePath))
+        res.end(buf)
       })
 
       // ── Config Qonto (clé API stockée côté serveur uniquement) ──
