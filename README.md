@@ -1,53 +1,102 @@
 # Sasalele — App de gestion associative
 
-Application web de gestion associative pour les Koalisons.
+Application web de gestion associative auto-hébergée.  
 Stack : **React 18 + Vite 5 + Recharts** — pas de base de données, persistance via fichiers JSON.
 
 ---
 
-## Déploiement rapide (nouveau VPS)
+## Installation sur un nouveau VPS
 
 ### Prérequis
-- Ubuntu/Debian avec accès root
-- Port 80 ouvert
 
-### Installation en une commande
+- Ubuntu ou Debian
+- Accès root
+- Port 80 ouvert
+- Git installé (`apt install git`)
+
+### En trois commandes
 
 ```bash
-git clone <URL_DU_REPO> /root
-cd /root
+git clone https://github.com/Le-plex/sasalele.git /opt/sasalele
+cd /opt/sasalele
 bash install.sh
-systemctl start sasalele
 ```
 
-Le script `install.sh` :
+Le script `install.sh` fait tout automatiquement :
 1. Installe Node.js 20 LTS si absent
 2. Installe les dépendances npm
 3. Crée le dossier `data/` avec les fichiers JSON vides
-4. Build l'app en production
-5. Installe et active le service systemd `sasalele`
+4. Installe et démarre le service systemd `sasalele`
 
 ### Premier lancement
 
-Accède à `http://<IP_DU_SERVEUR>` — l'app demande de créer le compte administrateur au premier démarrage.
+Accède à `http://<IP_DU_SERVEUR>` — une page de configuration te guide pour :
+- Choisir le nom de l'association
+- Choisir la couleur du thème
+- Créer le compte administrateur
 
 ---
 
-## Commandes
+## Restaurer depuis une sauvegarde
+
+Si tu as une sauvegarde d'une instance existante (fichier `.tar.gz`) :
+
+**Option A — Via l'interface** *(recommandé)*  
+Installe normalement, connecte-toi, puis va dans **Administration → Maintenance → Sauvegardes → Restaurer**.
+
+**Option B — En ligne de commande**
+```bash
+# Depuis le répertoire d'installation
+tar -xzf sasalele-backup-YYYY-MM-DD.tar.gz
+systemctl restart sasalele
+```
+
+Tout est restauré : événements, dépenses, réunions, utilisateurs, fichiers uploadés, etc.  
+> La configuration Qonto (`qonto-secrets.json`) est volontairement exclue des sauvegardes — à re-saisir manuellement dans Administration → Maintenance.
+
+---
+
+## Sauvegarder les données
+
+### Via l'interface
+Administration → **Maintenance** → section **Sauvegardes** → bouton **Télécharger la sauvegarde**
+
+Télécharge un fichier `sasalele-backup-YYYY-MM-DD.tar.gz` contenant tous les JSON et les fichiers uploadés.
+
+### En ligne de commande
+```bash
+tar -czf sasalele-backup-$(date +%Y-%m-%d).tar.gz -C /opt/sasalele data/
+```
+
+### Sauvegarde automatique quotidienne
+```bash
+mkdir -p /root/backups
+echo "0 3 * * * tar -czf /root/backups/sasalele-\$(date +\%Y-\%m-\%d).tar.gz -C /opt/sasalele data/" | crontab -
+```
+
+---
+
+## Mise à jour
 
 ```bash
-# Développement (hot reload)
-npm run dev
-
-# Build production
-npm run build
-
-# Service systemd
-systemctl start sasalele
-systemctl stop sasalele
+cd /opt/sasalele
+git pull
+npm install        # uniquement si package.json a changé
 systemctl restart sasalele
-systemctl status sasalele
-journalctl -u sasalele -f        # Logs en direct
+```
+
+Ou depuis l'interface : Administration → **Maintenance** → **Mises à jour** *(fonctionnalité à venir)*
+
+---
+
+## Commandes utiles
+
+```bash
+systemctl start sasalele       # Démarrer
+systemctl stop sasalele        # Arrêter
+systemctl restart sasalele     # Redémarrer
+systemctl status sasalele      # Statut
+journalctl -u sasalele -f      # Logs en direct
 ```
 
 ---
@@ -57,59 +106,59 @@ journalctl -u sasalele -f        # Logs en direct
 ```
 /
 ├── index.html              # Shell HTML
-├── vite.config.js          # Config Vite + API middleware
+├── vite.config.js          # Config Vite + API middleware (routes /api/*)
 ├── package.json
 ├── install.sh              # Script d'installation automatique
-├── sasalele.service        # Fichier service systemd (référence)
+├── sasalele.service        # Exemple de fichier service systemd
 │
 ├── src/
-│   └── koalitales.jsx      # Application complète (monolithe)
+│   └── koalitales.jsx      # Application complète
 │
 └── data/                   # ⚠ Non versionné — données persistantes
-    ├── data.json           # Données applicatives
-    ├── users.json          # Comptes utilisateurs
+    ├── data.json           # Données applicatives (events, dépenses, réunions…)
+    ├── users.json          # Comptes utilisateurs (hashs, tokens, permissions)
     ├── invites.json        # Codes d'invitation
-    ├── roles.json          # Configuration des rôles
+    ├── roles.json          # Rôles et permissions personnalisés
     ├── logs.json           # Journal d'activité
-    └── uploads/            # Fichiers uploadés (avatars, logos, CR)
+    └── uploads/            # Fichiers uploadés (logos, avatars, CR de réunions…)
 ```
 
-> **Important :** le dossier `data/` est exclu du repo git (`.gitignore`).
-> Ne jamais versionner les données — elles contiennent des informations personnelles.
+> Le dossier `data/` est exclu du repo git. Ne jamais le versionner — il contient des données personnelles.
 
 ---
 
-## Sauvegarde des données
+## Architecture technique
 
-Les données sont dans `/root/data/`. Pour sauvegarder :
+| Composant | Détail |
+|-----------|--------|
+| Frontend | React 18, CSS-in-JS, responsive (breakpoint 768px) |
+| Serveur | Vite dev server — le middleware `configureServer` expose toutes les routes `/api/*` |
+| Persistance | Fichiers JSON dans `data/` — lecture/écriture atomique (write → rename) |
+| Auth | Token aléatoire dans `localStorage`, mot de passe hashé (Base64 + sel) |
+| Fichiers | Uploadés dans `data/uploads/`, servis via `GET /uploads/<fichier>` |
+| Service | systemd — `Restart=on-failure`, démarre au boot |
 
-```bash
-# Sauvegarde manuelle
-tar -czf backup-$(date +%Y%m%d).tar.gz /root/data/
+### Permissions disponibles (RBAC)
 
-# Sauvegarde automatique quotidienne (crontab)
-echo "0 3 * * * tar -czf /root/backups/data-\$(date +\%Y\%m\%d).tar.gz /root/data/" | crontab -
-mkdir -p /root/backups
-```
+`create_event` · `edit_event` · `invoices` · `settings` · `catalog` · `manage_users` · `manage_inventory` · `manage_meetings` · `manage_prestations` · `manage_depenses` · `manage_treasury` · `web_admin`
 
----
-
-## Mise à jour
-
-```bash
-cd /root
-git pull
-npm install          # Si les dépendances ont changé
-npm run build
-systemctl restart sasalele
-```
+Le compte root (créé à l'installation) possède toutes les permissions.
 
 ---
 
-## Architecture
+## Pages de l'application
 
-- **Frontend** : React 18, CSS-in-JS, responsive (breakpoint 768px)
-- **Backend** : Middleware Vite — `GET/POST /api/data`, `/api/users`, `/api/logs`, `/api/upload`…
-- **Auth** : Session token dans `localStorage`, hash mot de passe Base64+sel
-- **Fichiers** : uploadés dans `data/uploads/`, servis via `GET /uploads/<fichier>`
-- **Permissions (RBAC)** : `create_event`, `edit_event`, `invoices`, `settings`, `catalog`, `manage_users`, `manage_inventory`, `manage_meetings`, `manage_prestations`, `manage_depenses`, `manage_treasury`, `web_admin`
+| Page | Permission requise | Description |
+|------|--------------------|-------------|
+| Dashboard | tous | KPIs, graphiques, aperçu général |
+| Événements | tous / `edit_event` | Gestion complète avec 7 onglets |
+| Factures | `invoices` | Factures + catalogue tarifaire |
+| Inventaire | `manage_inventory` | Matériel, quantités, emplacements |
+| Réunions | `manage_meetings` | Agenda, participants, CR uploadé |
+| Prestations | `manage_prestations` | Suivi des prestations |
+| Contacts | tous | CRUD contacts liés aux events |
+| Dépenses | tous / `manage_depenses` | Tricount, remboursements, solde |
+| Comptabilité | `manage_treasury` | Workflow de confirmation des remboursements |
+| Association | `settings` | Logo, SIRET, IBAN, paramètres |
+| Utilisateurs | `manage_users` | RBAC, codes d'invitation |
+| Maintenance | `web_admin` | Mode maintenance, sauvegardes, Qonto, mises à jour |
