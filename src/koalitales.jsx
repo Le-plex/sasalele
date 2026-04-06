@@ -4002,7 +4002,8 @@ function PrestationsPage({ data, update, users, contacts = [] }) {
           const trTotal   = calcTransportCost(p.transport);
           const total = p.customPrice != null ? p.customPrice + (p.customPriceAddTransport ? trTotal : 0) : gearTotal + svcTotal + trTotal;
           const expTotal = sumArr(p.expenses||[], "amount");
-          const balance = total - expTotal;
+          const billedTr = p.customPrice != null ? (p.customPriceAddTransport ? trTotal : 0) : trTotal;
+          const balance = total - billedTr - expTotal;
           return (
             <div key={p.id} style={s.card({ cursor: "pointer" })} onClick={() => setDetailId(p.id)}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -4666,7 +4667,7 @@ ${vehicles.length > 0 ? `<div class="section-title">Répartition des équipes</d
           ...(calcTrTotal > 0 ? [{ label: "Transport", value: fmt(calcTrTotal), color: "#a78bfa" }] : []),
           { label: "Total HT",  value: fmt(total),                              color: C.accent  },
           { label: "Dépenses",  value: fmt(expTotal),                           color: C.danger  },
-          { label: "Marge",     value: fmt(total - expTotal),                   color: total - expTotal >= 0 ? C.accent : C.danger },
+          { label: "Marge",     value: fmt(total - (p.customPrice != null ? (p.customPriceAddTransport ? calcTrTotal : 0) : calcTrTotal) - expTotal), color: (total - (p.customPrice != null ? (p.customPriceAddTransport ? calcTrTotal : 0) : calcTrTotal) - expTotal) >= 0 ? C.accent : C.danger },
           { label: "Équipe",    value: `${(p.team||[]).length} pers.`,          color: C.text    },
         ].map(({ label, value, color }) => (
           <div key={label} style={s.card()}><div style={s.label}>{label}</div><div style={{ fontFamily: C.mono, fontSize: "16px", color, marginTop: "4px" }}>{value}</div></div>
