@@ -245,6 +245,44 @@ function makeApiPlugin() {
         })
       })
 
+      // ── Réinitialisation complète (Panic Button) ──
+      server.middlewares.use('/api/reset', (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('{"error":"method not allowed"}'); return }
+        let body = ''
+        req.on('data', chunk => body += chunk)
+        req.on('end', () => {
+          try {
+            const { assocName } = JSON.parse(body)
+            if (!assocName) { res.statusCode = 400; res.end('{"error":"Nom manquant"}'); return }
+            // Vérifier que le nom correspond à celui stocké
+            const data = fs.existsSync(DATA_FILE) ? JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8')) : null
+            const realName = data?.assoc?.name || ''
+            if (assocName.trim() !== realName.trim()) {
+              res.statusCode = 403; res.end(JSON.stringify({ error: 'Nom incorrect' })); return
+            }
+            // Réinitialiser tous les fichiers JSON
+            const writeJson = (file, content) => {
+              const tmp = file + '.tmp'
+              fs.writeFileSync(tmp, content, 'utf-8')
+              fs.renameSync(tmp, file)
+            }
+            writeJson(DATA_FILE, 'null')
+            writeJson(USERS_FILE, '[]')
+            writeJson(INVITES_FILE, '[]')
+            writeJson(ROLES_FILE, '[]')
+            writeJson(LOGS_FILE, '[]')
+            // Vider le dossier uploads
+            if (fs.existsSync(UPLOADS_DIR)) {
+              for (const f of fs.readdirSync(UPLOADS_DIR)) {
+                try { fs.unlinkSync(path.join(UPLOADS_DIR, f)) } catch {}
+              }
+            }
+            res.end('{"ok":true}')
+          } catch (e) { res.statusCode = 500; res.end(JSON.stringify({ error: e.message })) }
+        })
+      })
+
       // ── Vérification des mises à jour ──
       server.middlewares.use('/api/update-check', (req, res) => {
         res.setHeader('Content-Type', 'application/json')

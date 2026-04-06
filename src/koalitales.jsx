@@ -8772,6 +8772,30 @@ function MaintenancePage({ data, update, session }) {
   const importInputRef = useRef(null);
 
   const [exportLoading, setExportLoading] = useState(false);
+
+  // Panic Button
+  const [panicOpen, setPanicOpen] = useState(false);
+  const [panicText, setPanicText] = useState("");
+  const [panicStatus, setPanicStatus] = useState(null);
+  const assocName = data?.assoc?.name || "";
+
+  const doPanic = async () => {
+    setPanicStatus("loading");
+    try {
+      const res = await fetch("/api/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assocName: panicText }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        setPanicStatus("done");
+        setTimeout(() => window.location.reload(), 2000);
+      } else {
+        setPanicStatus({ error: json.error || "Erreur" });
+      }
+    } catch (e) { setPanicStatus({ error: e.message }); }
+  };
   const doExport = async () => {
     setExportLoading(true);
     try {
@@ -9226,6 +9250,56 @@ function MaintenancePage({ data, update, session }) {
           )}
         </div>
       </div>
+      <div style={{ marginTop: "16px", border: `1px solid ${C.danger}60`, borderRadius: "12px", padding: "22px", background: `${C.danger}08` }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <div style={{ fontFamily: C.display, fontWeight: "700", fontSize: "15px", color: C.danger }}>Zone de danger</div>
+            <div style={{ color: C.muted, fontSize: "12px", marginTop: "3px" }}>Efface définitivement toutes les données, utilisateurs et fichiers</div>
+          </div>
+          <button style={{ ...s.btn("danger"), fontWeight: "700", letterSpacing: "0.3px" }} onClick={() => { setPanicOpen(true); setPanicText(""); setPanicStatus(null); }}>
+            Panic Button
+          </button>
+        </div>
+      </div>
+
+      {panicOpen && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
+          <div style={{ background: C.card, border: `1px solid ${C.danger}80`, borderRadius: "14px", padding: "28px", width: "100%", maxWidth: "440px" }}>
+            <div style={{ fontFamily: C.display, fontSize: "18px", fontWeight: "800", color: C.danger, marginBottom: "8px" }}>Réinitialisation totale</div>
+            <div style={{ fontSize: "13px", color: C.muted, marginBottom: "20px", lineHeight: "1.6" }}>
+              Cette action est <strong style={{ color: C.danger }}>irréversible</strong>. Toutes les données seront effacées :
+              événements, dépenses, réunions, utilisateurs, fichiers uploadés.<br /><br />
+              Pour confirmer, tapez le nom exact de l'association :
+              <div style={{ marginTop: "8px", padding: "6px 12px", background: C.card2, borderRadius: "6px", fontFamily: C.mono, fontSize: "13px", color: C.text }}>{assocName || "(non défini)"}</div>
+            </div>
+            <input
+              style={{ ...s.inp({ marginBottom: "14px", borderColor: panicText === assocName && assocName ? C.danger : C.border }) }}
+              placeholder={assocName || "Nom de l'association"}
+              value={panicText}
+              onChange={e => { setPanicText(e.target.value); setPanicStatus(null); }}
+              autoFocus
+            />
+            {panicStatus && panicStatus !== "loading" && panicStatus !== "done" && (
+              <div style={{ fontSize: "12px", color: C.danger, marginBottom: "10px" }}>{panicStatus.error}</div>
+            )}
+            {panicStatus === "done" && (
+              <div style={{ fontSize: "12px", color: C.accent, marginBottom: "10px" }}>Réinitialisation effectuée — rechargement…</div>
+            )}
+            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+              <button style={s.btn("ghost")} onClick={() => setPanicOpen(false)} disabled={panicStatus === "loading" || panicStatus === "done"}>
+                Annuler
+              </button>
+              <button
+                style={{ ...s.btn("danger"), fontWeight: "700", opacity: (panicText === assocName && assocName && panicStatus !== "loading" && panicStatus !== "done") ? 1 : 0.4 }}
+                onClick={doPanic}
+                disabled={panicText !== assocName || !assocName || panicStatus === "loading" || panicStatus === "done"}
+              >
+                {panicStatus === "loading" ? "Réinitialisation…" : "Tout effacer"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>)}
     </div>
   );
