@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import fs from 'fs'
 import path from 'path'
 import https from 'https'
-import { execFile, spawn } from 'child_process'
+import { execFile } from 'child_process'
 
 const USERS_FILE   = path.resolve('./data/users.json')
 const INVITES_FILE = path.resolve('./data/invites.json')
@@ -182,18 +182,21 @@ function makeApiPlugin() {
         if (req.method !== 'GET') { res.statusCode = 405; res.end('{"error":"method not allowed"}'); return }
         const date = new Date().toISOString().split('T')[0]
         const filename = `sasalele-backup-${date}.tar.gz`
-        const tar = spawn('tar', ['-czf', '-', 'data'], { cwd: path.resolve('.') })
-        const chunks = []
-        tar.stdout.on('data', chunk => chunks.push(chunk))
-        tar.stdout.on('end', () => {
-          const buf = Buffer.concat(chunks)
-          res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
-          res.setHeader('Content-Type', 'application/gzip')
-          res.setHeader('Content-Length', buf.length)
-          res.end(buf)
+        const tmpFile = `/tmp/sasalele-export-${Date.now()}.tar.gz`
+        execFile('tar', ['-czf', tmpFile, 'data'], { cwd: path.resolve('.') }, (err) => {
+          if (err) { res.statusCode = 500; res.end('{"error":"tar failed"}'); return }
+          try {
+            const buf = fs.readFileSync(tmpFile)
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+            res.setHeader('Content-Type', 'application/gzip')
+            res.setHeader('Content-Length', buf.length)
+            res.end(buf)
+          } catch (e) {
+            res.statusCode = 500; res.end('{"error":"read failed"}')
+          } finally {
+            try { fs.unlinkSync(tmpFile) } catch {}
+          }
         })
-        tar.stderr.on('data', () => {})
-        tar.on('error', () => { if (!res.headersSent) { res.statusCode = 500; res.end() } })
       })
 
       // ── Import sauvegarde ──
