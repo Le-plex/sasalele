@@ -7,6 +7,7 @@
 !/package.json
 !/package-lock.json
 !/install.sh
+!/install.ps1
 !/sasalele.service
 !/README.md
 !/CLAUDE.md

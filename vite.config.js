@@ -4,6 +4,9 @@ import fs from 'fs'
 import path from 'path'
 import https from 'https'
 import { execFile } from 'child_process'
+import os from 'os'
+
+const IS_WINDOWS = process.platform === 'win32'
 
 const USERS_FILE   = path.resolve('./data/users.json')
 const INVITES_FILE = path.resolve('./data/invites.json')
@@ -173,7 +176,8 @@ function makeApiPlugin() {
             if (event === 'login_ok')     msg = `🌐 Site — Connexion\n👤 ${username}\n🌐 IP : ${ip}`
             else if (event === 'login_fail') msg = `⚠️ Site — Tentative ratée\n👤 ${username}\n🌐 IP : ${ip}`
             else if (event === 'logout')  msg = `🌐 Site — Déconnexion\n👤 ${username}\n🌐 IP : ${ip}`
-            if (msg) execFile('/usr/local/bin/tg-notify', [msg, ip], () => {})
+            if (msg && !IS_WINDOWS && fs.existsSync('/usr/local/bin/tg-notify'))
+              execFile('/usr/local/bin/tg-notify', [msg, ip], () => {})
             res.end('{"ok":true}')
           } catch { res.statusCode = 400; res.end('{"error":"bad request"}') }
         })
@@ -184,7 +188,7 @@ function makeApiPlugin() {
         res.setHeader('Content-Type', 'application/json')
         if (req.method !== 'GET') { res.statusCode = 405; res.end('{"error":"method not allowed"}'); return }
         const date = new Date().toISOString().split('T')[0]
-        const tmpFile = `/tmp/sasalele-export-${Date.now()}.tar.gz`
+        const tmpFile = path.join(os.tmpdir(), `sasalele-export-${Date.now()}.tar.gz`)
         const serveName = `sasalele-backup-${date}-${Date.now()}.tar.gz`
         const servePath = path.join(UPLOADS_DIR, serveName)
         execFile('tar', ['-czf', tmpFile, 'data'], { cwd: path.resolve('.') }, (err) => {
@@ -208,7 +212,7 @@ function makeApiPlugin() {
         const chunks = []
         req.on('data', chunk => chunks.push(chunk))
         req.on('end', () => {
-          const tmpFile = path.join('/tmp', `sasalele-import-${Date.now()}.tar.gz`)
+          const tmpFile = path.join(os.tmpdir(), `sasalele-import-${Date.now()}.tar.gz`)
           try {
             fs.writeFileSync(tmpFile, Buffer.concat(chunks))
             // Validation : vérifier que data/data.json est présent dans l'archive
@@ -324,7 +328,7 @@ function makeApiPlugin() {
               if (resetErr) { res.statusCode = 500; res.end(JSON.stringify({ error: 'git reset échoué : ' + resetErr.message })); return }
               const finish = () => {
                 res.end(JSON.stringify({ ok: true, needsRestart, needsInstall, log: resetOut.trim() }))
-                if (needsRestart) {
+                if (needsRestart && !IS_WINDOWS) {
                   setTimeout(() => execFile('systemctl', ['restart', 'sasalele'], { detached: true }, () => {}), 1500)
                 }
               }
