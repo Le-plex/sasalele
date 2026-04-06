@@ -1177,8 +1177,8 @@ function Dashboard({ data, goEvent, go, session, update, can }) {
   }, 0);
 
   // ── Bilan net global ──
-  const dbLocCalcTotal = (l) => { const it = (l.items||[]).reduce((a,i)=>a+(i.qty||1)*(i.unitPrice||0)*(i.days||1),0); const sv=(l.services||[]).reduce((a,sv)=>a+sv.qty*sv.unitPrice,0); return l.customPrice!=null?l.customPrice:it+sv+calcTransportCost(l.transport); };
-  const dbPrestCalcTotal = (p2) => { const g=(p2.gear||[]).reduce((a,g2)=>a+g2.qty*g2.unitPrice*g2.days,0); const sv=(p2.services||[]).reduce((a,sv)=>a+sv.qty*sv.unitPrice,0); return p2.customPrice!=null?p2.customPrice:g+sv+calcTransportCost(p2.transport); };
+  const dbLocCalcTotal = (l) => { const it = (l.items||[]).reduce((a,i)=>a+(i.qty||1)*(i.unitPrice||0)*(i.days||1),0); const sv=(l.services||[]).reduce((a,sv)=>a+sv.qty*sv.unitPrice,0); const base=it+sv+calcTransportCost(l.transport); return l.customPrice!=null?l.customPrice+(l.customPriceAddTransport?calcTransportCost(l.transport):0):base; };
+  const dbPrestCalcTotal = (p2) => { const g=(p2.gear||[]).reduce((a,g2)=>a+g2.qty*g2.unitPrice*g2.days,0); const sv=(p2.services||[]).reduce((a,sv)=>a+sv.qty*sv.unitPrice,0); const tr=calcTransportCost(p2.transport); return p2.customPrice!=null?p2.customPrice+(p2.customPriceAddTransport?tr:0):g+sv+tr; };
   const dbTotProduits =
     events.reduce((a,e) => a+(e.revenues||[]).reduce((b,r) => b+((e.revenueConfirmations||{})[r.id]?.confirmed ? r.amount : 0), 0), 0)
     + prestations.filter(p2=>p2.paymentConfirmed).reduce((a,p2)=>a+dbPrestCalcTotal(p2),0)
@@ -2601,7 +2601,8 @@ function LocationDetail({ loc, locations, inventory, catalog, assoc, update, cal
 
   const days = calcDays(loc.dateStart, loc.dateEnd);
   const calcTotal = locTotal(loc);
-  const total = (loc.customPrice != null) ? loc.customPrice : calcTotal;
+  const trCostForCustom = calcTransportCost(loc.transport);
+  const total = (loc.customPrice != null) ? loc.customPrice + (loc.customPriceAddTransport ? trCostForCustom : 0) : calcTotal;
 
   const updLoc = (patch) => {
     update({ locations: locations.map(l => l.id !== loc.id ? l : { ...l, ...patch }) });
@@ -2939,16 +2940,26 @@ function LocationDetail({ loc, locations, inventory, catalog, assoc, update, cal
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <span style={{ fontFamily: C.mono, fontSize: "22px", fontWeight: "700", color: C.accent }}>{fmt(total)}</span>
             <button style={{ ...s.btn("ghost"), fontSize: "11px", padding: "3px 9px", color: loc.customPrice != null ? C.warn : C.muted }}
-              onClick={() => updLoc({ customPrice: loc.customPrice != null ? null : calcTotal })}>
+              onClick={() => updLoc({ customPrice: loc.customPrice != null ? null : calcTotal, customPriceAddTransport: false })}>
               {loc.customPrice != null ? "✕ Retirer prix libre" : "Prix libre"}
             </button>
           </div>
         </div>
         {loc.customPrice != null && (
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <label style={{ ...s.label, marginBottom: 0, whiteSpace: "nowrap" }}>Prix libre (€)</label>
-            <input type="number" style={{ ...s.inp(), maxWidth: "180px", fontFamily: C.mono, fontSize: "16px" }} min="0" step="0.01"
-              value={loc.customPrice} onChange={e => updLoc({ customPrice: parseFloat(e.target.value) || 0 })} />
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <label style={{ ...s.label, marginBottom: 0, whiteSpace: "nowrap" }}>Prix libre (€)</label>
+              <input type="number" style={{ ...s.inp(), maxWidth: "180px", fontFamily: C.mono, fontSize: "16px" }} min="0" step="0.01"
+                value={loc.customPrice} onChange={e => updLoc({ customPrice: parseFloat(e.target.value) || 0 })} />
+            </div>
+            {trCostForCustom > 0 && (
+              <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "13px", color: C.muted }}>
+                <input type="checkbox" checked={!!loc.customPriceAddTransport}
+                  onChange={e => updLoc({ customPriceAddTransport: e.target.checked })} />
+                Ajouter le transport en sus ({fmt(trCostForCustom)})
+                {loc.customPriceAddTransport && <span style={{ color: C.accent, fontFamily: C.mono, fontSize: "12px" }}>→ total : {fmt(loc.customPrice + trCostForCustom)}</span>}
+              </label>
+            )}
           </div>
         )}
       </div>
@@ -3043,8 +3054,9 @@ ${(loc.services||[]).map(s=>`<tr><td>${s.label}</td><td style="text-align:center
 
   const printDevis = (loc) => {
     const days = calcDays(loc.dateStart, loc.dateEnd);
-    const total = locTotal(loc);
     const trCost = calcTransportCost(loc.transport);
+    const basePrice = loc.customPrice != null ? loc.customPrice : locTotal(loc);
+    const total = loc.customPrice != null ? loc.customPrice + (loc.customPriceAddTransport ? trCost : 0) : locTotal(loc);
     const tr = loc.transport || {};
     const allerFuel = (tr.fuelAmount != null && tr.fuelAmount !== "") ? parseFloat(tr.fuelAmount)||0 : (() => { const km=parseFloat(tr.distanceKm)||0,conso=parseFloat(tr.fuelConso)||0,p=parseFloat(tr.fuelPrice)||0; return km>0&&conso>0&&p>0?Math.round(km*conso/100*p*100)/100:0; })();
     const allerTotal = allerFuel + (parseFloat(tr.tolls)||0);
@@ -3056,6 +3068,10 @@ ${(loc.services||[]).map(s=>`<tr><td>${s.label}</td><td style="text-align:center
     const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Devis ${loc.number}</title>
 <style>${printStyle}</style></head><body>
 ${headerHTML(loc).replace("%DOCTITLE%","DEVIS")}
+${loc.customPrice != null ? `<table><thead><tr><th>Désignation</th><th class="amt">Total HT</th></tr></thead><tbody>
+<tr><td>Location — ${loc.label}</td><td class="amt">${fmt(loc.customPrice)}</td></tr>
+${loc.customPriceAddTransport && trCost > 0 ? `${allerTotal>0?`<tr><td>Transport aller</td><td class="amt">${fmt(allerTotal)}</td></tr>`:""}${retourTotal>0?`<tr><td>Transport retour</td><td class="amt">${fmt(retourTotal)}</td></tr>`:""}${rentalCostD>0?`<tr><td>Location véhicule</td><td class="amt">${fmt(rentalCostD)}</td></tr>`:""}${(tr.extraLines||[]).filter(l=>parseFloat(l.amount)>0).map(l=>`<tr><td>${l.label||"Frais transport"}</td><td class="amt">${fmt(parseFloat(l.amount)||0)}</td></tr>`).join("")}` : ""}
+</tbody></table>` : `
 ${(loc.items||[]).length>0?`<table><thead><tr><th>Matériel</th><th style="text-align:center">Qté</th><th style="text-align:center">Jours</th><th class="amt">PU/jour</th><th class="amt">Total HT</th></tr></thead><tbody>
 ${(loc.items||[]).map(i=>`<tr><td>${i.itemName}</td><td style="text-align:center">${i.qty}</td><td style="text-align:center">${i.priceType==="/jour"?i.days:"—"}</td><td class="amt">${fmt(i.unitPrice)}</td><td class="amt">${fmt(itemTotal(i))}</td></tr>`).join("")}
 <tr class="tf"><td colspan="4">Sous-total matériel</td><td class="amt">${fmt((loc.items||[]).reduce((a,i)=>a+itemTotal(i),0))}</td></tr>
@@ -3071,6 +3087,7 @@ ${rentalCostD>0?`<tr><td>Location ${vrd.type||"véhicule"}${vrd.label?` — ${vr
 ${(tr.extraLines||[]).filter(l=>parseFloat(l.amount)>0).map(l=>`<tr><td>${l.label||"Frais transport"}</td><td class="amt">${fmt(parseFloat(l.amount)||0)}</td></tr>`).join("")}
 <tr class="tf"><td>Sous-total transport</td><td class="amt">${fmt(trCost)}</td></tr>
 </tbody></table>`:""}
+`}
 <div class="tot-box">
   <div class="tr"><span>Total HT</span><span>${fmt(total)}</span></div>
   <div class="tr"><span>TVA (0%)</span><span>${fmt(0)}</span></div>
@@ -3085,7 +3102,8 @@ ${loc.notes?`<div style="padding:12px;background:#f8f8f8;border-radius:8px;font-
 
   const printContrat = (loc) => {
     const days = calcDays(loc.dateStart, loc.dateEnd);
-    const effectiveTotal = loc.customPrice != null ? loc.customPrice : locTotal(loc);
+    const trCostC = calcTransportCost(loc.transport);
+    const effectiveTotal = loc.customPrice != null ? loc.customPrice + (loc.customPriceAddTransport ? trCostC : 0) : locTotal(loc);
     const today_str = new Date().toLocaleDateString("fr-FR");
     const ct = assoc.contractTerms || DEFAULT_CONTRACT_TERMS;
     const pctAcompte = ct.acompte || 30;
@@ -3264,9 +3282,9 @@ ${loc.notes?`<div class="art"><div class="art-title">Notes complémentaires</div
   };
 
   const printFacture = (loc) => {
-    const total = locTotal(loc);
     const num = `FAC-${loc.number}`;
     const trCost = calcTransportCost(loc.transport);
+    const total = loc.customPrice != null ? loc.customPrice + (loc.customPriceAddTransport ? trCost : 0) : locTotal(loc);
     const tr = loc.transport || {};
     const allerFuel = (tr.fuelAmount != null && tr.fuelAmount !== "") ? parseFloat(tr.fuelAmount)||0 : (() => { const km=parseFloat(tr.distanceKm)||0,conso=parseFloat(tr.fuelConso)||0,p=parseFloat(tr.fuelPrice)||0; return km>0&&conso>0&&p>0?Math.round(km*conso/100*p*100)/100:0; })();
     const allerTotal = allerFuel + (parseFloat(tr.tolls)||0);
@@ -3278,6 +3296,10 @@ ${loc.notes?`<div class="art"><div class="art-title">Notes complémentaires</div
     const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Facture ${num}</title>
 <style>${printStyle}</style></head><body>
 ${headerHTML(loc).replace("%DOCTITLE%","FACTURE")}
+${loc.customPrice != null ? `<table><thead><tr><th>Désignation</th><th class="amt">Total HT</th></tr></thead><tbody>
+<tr><td>Location — ${loc.label}</td><td class="amt">${fmt(loc.customPrice)}</td></tr>
+${loc.customPriceAddTransport && trCost > 0 ? `${allerTotal>0?`<tr><td>Transport aller</td><td class="amt">${fmt(allerTotal)}</td></tr>`:""}${retourTotal>0?`<tr><td>Transport retour</td><td class="amt">${fmt(retourTotal)}</td></tr>`:""}${rentalCostF>0?`<tr><td>Location véhicule</td><td class="amt">${fmt(rentalCostF)}</td></tr>`:""}${(tr.extraLines||[]).filter(l=>parseFloat(l.amount)>0).map(l=>`<tr><td>${l.label||"Frais transport"}</td><td class="amt">${fmt(parseFloat(l.amount)||0)}</td></tr>`).join("")}` : ""}
+</tbody></table>` : `
 ${(loc.items||[]).length>0?`<table><thead><tr><th>Matériel</th><th style="text-align:center">Qté</th><th style="text-align:center">Jours</th><th class="amt">PU HT</th><th class="amt">Total HT</th></tr></thead><tbody>
 ${(loc.items||[]).map(i=>`<tr><td>${i.itemName}</td><td style="text-align:center">${i.qty}</td><td style="text-align:center">${i.priceType==="/jour"?i.days:"—"}</td><td class="amt">${fmt(i.unitPrice)}</td><td class="amt">${fmt(itemTotal(i))}</td></tr>`).join("")}
 <tr class="tf"><td colspan="4">Sous-total matériel</td><td class="amt">${fmt((loc.items||[]).reduce((a,i)=>a+itemTotal(i),0))}</td></tr>
@@ -3293,6 +3315,7 @@ ${rentalCostF>0?`<tr><td>Location ${vrf.type||"véhicule"}${vrf.label?` — ${vr
 ${(tr.extraLines||[]).filter(l=>parseFloat(l.amount)>0).map(l=>`<tr><td>${l.label||"Frais transport"}</td><td class="amt">${fmt(parseFloat(l.amount)||0)}</td></tr>`).join("")}
 <tr class="tf"><td>Sous-total transport</td><td class="amt">${fmt(trCost)}</td></tr>
 </tbody></table>`:""}
+`}
 <div class="tot-box">
   <div class="tr"><span>Total HT</span><span>${fmt(total)}</span></div>
   <div class="tr"><span>TVA (0%)</span><span>${fmt(0)}</span></div>
@@ -3355,7 +3378,7 @@ ${loc.notes?`<div style="padding:12px;background:#f8f8f8;border-radius:8px;font-
           <div style={{ color: C.muted, textAlign: "center", padding: "70px", fontSize: "14px" }}>Aucune location enregistrée.</div>
         )}
         {[...locations].reverse().map(loc => {
-          const total = loc.customPrice != null ? loc.customPrice : locTotal(loc);
+          const total = loc.customPrice != null ? loc.customPrice + (loc.customPriceAddTransport ? calcTransportCost(loc.transport) : 0) : locTotal(loc);
           const days = calcDays(loc.dateStart, loc.dateEnd);
           return (
             <div key={loc.id} style={s.card({ cursor: "pointer" })} onClick={() => { setDetailId(loc.id); setView("detail"); }}>
@@ -3968,7 +3991,7 @@ function PrestationsPage({ data, update, users, contacts = [] }) {
           const gearTotal = (p.gear||[]).reduce((a, g) => a + g.qty*g.unitPrice*g.days, 0);
           const svcTotal  = (p.services||[]).reduce((a, sv) => a + sv.qty*sv.unitPrice, 0);
           const trTotal   = calcTransportCost(p.transport);
-          const total = p.customPrice != null ? p.customPrice : gearTotal + svcTotal + trTotal;
+          const total = p.customPrice != null ? p.customPrice + (p.customPriceAddTransport ? trTotal : 0) : gearTotal + svcTotal + trTotal;
           const expTotal = sumArr(p.expenses||[], "amount");
           const balance = total - expTotal;
           return (
@@ -4028,7 +4051,9 @@ function calcTransportCost(tr) {
 function calcPrestationTotal(p) {
   const gearTotal = (p.gear||[]).reduce((a, g) => a + (g.qty||1) * (g.unitPrice||0) * (g.days||1), 0);
   const servicesTotal = (p.services||[]).reduce((a, sv) => a + (sv.qty||1) * (sv.unitPrice||0), 0);
-  return gearTotal + servicesTotal + calcTransportCost(p.transport);
+  const tr = calcTransportCost(p.transport);
+  if (p.customPrice != null) return p.customPrice + (p.customPriceAddTransport ? tr : 0);
+  return gearTotal + servicesTotal + tr;
 }
 
 function PrestationDetail({ prestation: p, data, update, back, users, contacts = [], pool = [] }) {
@@ -4057,7 +4082,7 @@ function PrestationDetail({ prestation: p, data, update, back, users, contacts =
   const svcTotal  = (p.services||[]).reduce((a, sv) => a + sv.qty*sv.unitPrice, 0);
   const calcTrTotal = calcTransportCost(p.transport);
   const calcTotal = gearTotal + svcTotal + calcTrTotal;
-  const total     = (p.customPrice != null) ? p.customPrice : calcTotal;
+  const total     = (p.customPrice != null) ? p.customPrice + (p.customPriceAddTransport ? calcTrTotal : 0) : calcTotal;
   const expTotal  = sumArr(p.expenses||[], "amount");
 
   // Gear
@@ -4156,8 +4181,13 @@ footer{border-top:1px solid #eee;padding-top:12px;color:#aaa;font-size:11px;marg
       ...(trDocRentalCost > 0 ? [{ label: `Location ${trDocVR.type||"véhicule"}${trDocVR.label ? ` — ${trDocVR.label}` : ""}`, qty: parseFloat(trDocVR.days)||1, unitPrice: parseFloat(trDocVR.pricePerDay)||0, unit: "jour" }] : []),
       ...(trDoc.extraLines||[]).filter(l=>parseFloat(l.amount)>0).map(l => ({ label: l.label||"Frais transport", qty: 1, unitPrice: parseFloat(l.amount)||0, unit: "forfait" })),
     ];
-    const lines = [...gearLines, ...svcLines, ...trLines];
-    const docTotal = p.customPrice != null ? p.customPrice : lines.reduce((a, l) => a + l.qty * l.unitPrice, 0);
+    const baseLines = [...gearLines, ...svcLines, ...(p.customPrice == null ? trLines : [])];
+    const customLines = p.customPrice != null ? [
+      { label: `Prestation — ${p.label}`, qty: 1, unitPrice: p.customPrice, unit: "forfait" },
+      ...(p.customPriceAddTransport ? trLines : []),
+    ] : null;
+    const lines = customLines || baseLines;
+    const docTotal = p.customPrice != null ? p.customPrice + (p.customPriceAddTransport ? calcTransportCost(p.transport) : 0) : lines.reduce((a, l) => a + l.qty * l.unitPrice, 0);
     const num = `${type === "devis" ? "DEV" : "FAC"}-${Date.now().toString().slice(-6)}`;
     const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>${type === "devis" ? "Devis" : "Facture"} — ${p.label}</title><style>${docStyle}</style></head><body>
 <div class="top">
@@ -4264,7 +4294,7 @@ body{font-size:12.5px}.contrat-title{font-size:22px;font-weight:800;letter-spaci
   <p>Le montant total de la prestation est arrêté à :</p>
   <p style="font-size:20px;font-weight:800;margin:10px 0">${fmt(total)} HT</p>
   <p style="color:#888;font-size:11px;margin-bottom:10px">TVA non applicable en vertu de l'article 293B du Code Général des Impôts.</p>
-  ${(p.customPrice == null && (gearTotal > 0 || svcTotal > 0 || calcTrTotal > 0)) ? `<p style="margin-bottom:8px">${[gearTotal > 0 ? `Matériel : ${fmt(gearTotal)}` : "", svcTotal > 0 ? `Services : ${fmt(svcTotal)}` : "", calcTrTotal > 0 ? `Transport : ${fmt(calcTrTotal)}` : ""].filter(Boolean).join(" — ")}</p>` : ""}
+  ${p.customPrice != null ? `<p style="margin-bottom:8px">${[`Forfait prestation : ${fmt(p.customPrice)}`, p.customPriceAddTransport && calcTrTotal > 0 ? `Transport : ${fmt(calcTrTotal)}` : ""].filter(Boolean).join(" — ")}</p>` : (gearTotal > 0 || svcTotal > 0 || calcTrTotal > 0) ? `<p style="margin-bottom:8px">${[gearTotal > 0 ? `Matériel : ${fmt(gearTotal)}` : "", svcTotal > 0 ? `Services : ${fmt(svcTotal)}` : "", calcTrTotal > 0 ? `Transport : ${fmt(calcTrTotal)}` : ""].filter(Boolean).join(" — ")}</p>` : ""}
   <p>Modalités de règlement acceptées : <strong>virement bancaire</strong>${data.assoc.iban ? ` (IBAN : ${data.assoc.iban})` : ""}, chèque libellé à l'ordre de ${data.assoc.name||"l'Association"}, ou espèces (dans la limite légale en vigueur).</p>
   <p style="margin-top:8px">Un acompte non remboursable de <strong>${pctAcompte} %</strong> (soit ${fmt(total * pctAcompte/100)}) est exigible à la signature du présent contrat et conditionne sa prise d'effet. Le solde de <strong>${fmt(total * (1-pctAcompte/100))}</strong> est dû au plus tard le jour de la prestation, avant le début de l'installation. Tout défaut de paiement à l'échéance entraîne de plein droit l'application d'intérêts de retard au taux légal en vigueur, majoré de ${ct.penaliteTaux||5} points, ainsi qu'une indemnité forfaitaire pour frais de recouvrement de ${ct.penaliteIndemnite||40} €.</p>
 </div>
@@ -4635,14 +4665,24 @@ ${vehicles.length > 0 ? `<div class="section-title">Répartition des équipes</d
                   <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                     <span style={{ fontFamily: C.mono, color: C.accent }}>{fmt(total)}</span>
                     <button style={{ ...s.btn("ghost"), fontSize: "10px", padding: "2px 7px", color: p.customPrice != null ? C.warn : C.muted }}
-                      onClick={() => upd({ customPrice: p.customPrice != null ? null : calcTotal })}>
+                      onClick={() => upd({ customPrice: p.customPrice != null ? null : calcTotal, customPriceAddTransport: false })}>
                       {p.customPrice != null ? "✕" : "Prix libre"}
                     </button>
                   </div>
                 </div>
                 {p.customPrice != null && (
-                  <input type="number" style={{ ...s.inp(), fontFamily: C.mono, fontSize: "15px", marginBottom: "6px" }} min="0" step="0.01"
-                    value={p.customPrice} onChange={e => upd({ customPrice: parseFloat(e.target.value) || 0 })} />
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <input type="number" style={{ ...s.inp(), fontFamily: C.mono, fontSize: "15px" }} min="0" step="0.01"
+                      value={p.customPrice} onChange={e => upd({ customPrice: parseFloat(e.target.value) || 0 })} />
+                    {calcTrTotal > 0 && (
+                      <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "12px", color: C.muted }}>
+                        <input type="checkbox" checked={!!p.customPriceAddTransport}
+                          onChange={e => upd({ customPriceAddTransport: e.target.checked })} />
+                        Transport en sus ({fmt(calcTrTotal)})
+                        {p.customPriceAddTransport && <span style={{ color: C.accent, fontFamily: C.mono, fontSize: "11px" }}>→ {fmt(p.customPrice + calcTrTotal)}</span>}
+                      </label>
+                    )}
+                  </div>
                 )}
               </div>
               {expTotal > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.muted }}>Dépenses engagées</span><span style={{ fontFamily: C.mono, color: C.danger }}>−{fmt(expTotal)}</span></div>}
@@ -6970,12 +7010,14 @@ function ComptaPage({ data, update, can, session }) {
   const locCalcTotal = (l) => {
     const items = (l.items||[]).reduce((a, it) => a + (it.qty||1)*(it.unitPrice||0)*(it.days||1), 0);
     const svcs  = (l.services||[]).reduce((a, sv) => a + (sv.qty||1)*(sv.unitPrice||0), 0);
-    return l.customPrice != null ? l.customPrice : items + svcs;
+    const tr = calcTransportCost(l.transport);
+    return l.customPrice != null ? l.customPrice + (l.customPriceAddTransport ? tr : 0) : items + svcs + tr;
   };
   const prestCalcTotal = (p2) => {
     const g  = (p2.gear||[]).reduce((a, g2) => a + g2.qty*g2.unitPrice*g2.days, 0);
     const sv = (p2.services||[]).reduce((a, sv) => a + sv.qty*sv.unitPrice, 0);
-    return p2.customPrice != null ? p2.customPrice : g + sv;
+    const tr = calcTransportCost(p2.transport);
+    return p2.customPrice != null ? p2.customPrice + (p2.customPriceAddTransport ? tr : 0) : g + sv + tr;
   };
 
   // ── Paiements prestations à encaisser ──
