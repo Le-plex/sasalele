@@ -8771,21 +8771,18 @@ function MaintenancePage({ data, update, session }) {
   const [importStatus, setImportStatus] = useState(null);
   const importInputRef = useRef(null);
 
+  const [exportLoading, setExportLoading] = useState(false);
   const doExport = async () => {
+    setExportLoading(true);
     try {
       const res = await fetch('/api/export');
-      if (!res.ok) throw new Error('Erreur serveur');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `sasalele-backup-${new Date().toISOString().split('T')[0]}.tar.gz`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || 'Erreur serveur');
+      window.location.href = json.url;
     } catch (e) {
       alert('Erreur lors de l\'export : ' + e.message);
+    } finally {
+      setExportLoading(false);
     }
   };
 
@@ -9181,8 +9178,8 @@ function MaintenancePage({ data, update, session }) {
             <div style={{ fontSize: "13px", fontWeight: "500", marginBottom: "3px" }}>Exporter</div>
             <div style={{ fontSize: "12px", color: C.muted }}>Télécharge une archive <span style={{ fontFamily: C.mono }}>.tar.gz</span> de tout le dossier data/</div>
           </div>
-          <button style={s.btn("primary")} onClick={doExport}>
-            Télécharger la sauvegarde
+          <button style={s.btn("primary")} onClick={doExport} disabled={exportLoading}>
+            {exportLoading ? "Génération…" : "Télécharger la sauvegarde"}
           </button>
         </div>
 

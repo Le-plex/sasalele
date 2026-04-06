@@ -179,22 +179,22 @@ function makeApiPlugin() {
 
       // ── Export sauvegarde (.tar.gz du dossier data/) ──
       server.middlewares.use('/api/export', (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
         if (req.method !== 'GET') { res.statusCode = 405; res.end('{"error":"method not allowed"}'); return }
         const date = new Date().toISOString().split('T')[0]
-        const filename = `sasalele-backup-${date}.tar.gz`
         const tmpFile = `/tmp/sasalele-export-${Date.now()}.tar.gz`
+        const serveName = `sasalele-backup-${date}-${Date.now()}.tar.gz`
+        const servePath = path.join(UPLOADS_DIR, serveName)
         execFile('tar', ['-czf', tmpFile, 'data'], { cwd: path.resolve('.') }, (err) => {
-          if (err) { res.statusCode = 500; res.end('{"error":"tar failed"}'); return }
+          if (err) { res.statusCode = 500; res.end(JSON.stringify({ error: 'tar failed: ' + err.message })); return }
           try {
-            const buf = fs.readFileSync(tmpFile)
-            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
-            res.setHeader('Content-Type', 'application/gzip')
-            res.setHeader('Content-Length', buf.length)
-            res.end(buf)
+            fs.copyFileSync(tmpFile, servePath)
+            fs.unlinkSync(tmpFile)
+            // Suppression automatique après 5 minutes
+            setTimeout(() => { try { fs.unlinkSync(servePath) } catch {} }, 5 * 60 * 1000)
+            res.end(JSON.stringify({ ok: true, url: `/uploads/${serveName}` }))
           } catch (e) {
-            res.statusCode = 500; res.end('{"error":"read failed"}')
-          } finally {
-            try { fs.unlinkSync(tmpFile) } catch {}
+            res.statusCode = 500; res.end(JSON.stringify({ error: e.message }))
           }
         })
       })
