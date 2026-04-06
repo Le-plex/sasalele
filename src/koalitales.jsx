@@ -4244,7 +4244,7 @@ ${(p.team||[]).length > 0 ? `<p style="font-size:12px;color:#555;margin-bottom:6
     ] : null;
     const lines = customLines || baseLines;
     const docTotal = p.customPrice != null ? p.customPrice + (p.customPriceAddTransport ? calcTransportCost(p.transport) : 0) : lines.reduce((a, l) => a + l.qty * l.unitPrice, 0);
-    const num = `${type === "devis" ? "DEV" : "FAC"}-${Date.now().toString().slice(-6)}`;
+    const num = p.number ? `${type === "devis" ? "DEV" : "FAC"}-${p.number.replace(/^PREST-/,"")}` : `${type === "devis" ? "DEV" : "FAC"}-${Date.now().toString().slice(-6)}`;
     const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>${type === "devis" ? "Devis" : "Facture"} — ${p.label}</title><style>${docStyle}</style></head><body>
 <div class="top">
   <div>${assocBlock()}</div>
@@ -4302,7 +4302,7 @@ body{font-size:12.5px}.contrat-title{font-size:22px;font-weight:800;letter-spaci
   <div>${assocBlock()}</div>
   <div style="text-align:right">
     <div class="contrat-title">CONTRAT DE PRESTATION DE SERVICES</div>
-    <div class="doc-sub">Réf. PREST-${Date.now().toString().slice(-6)}<br>Établi le ${today_str}</div>
+    <div class="doc-sub">Réf. ${p.number || `PREST-${Date.now().toString().slice(-6)}`}<br>Établi le ${today_str}</div>
   </div>
 </div>
 
@@ -4637,7 +4637,12 @@ ${vehicles.length > 0 ? `<div class="section-title">Répartition des équipes</d
         <button style={s.btn("ghost", { padding: "7px 12px", fontSize: "12px" })} onClick={back}>← Retour</button>
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-            {p.number && <span style={{ fontFamily: C.mono, fontSize: "12px", color: C.accent, background: `${C.accent}18`, padding: "3px 8px", borderRadius: "5px", whiteSpace: "nowrap" }}>{p.number}</span>}
+            {p.number
+              ? <span style={{ fontFamily: C.mono, fontSize: "12px", color: C.accent, background: `${C.accent}18`, padding: "3px 8px", borderRadius: "5px", whiteSpace: "nowrap", cursor: "pointer" }}
+                  title="Cliquer pour modifier la référence"
+                  onClick={() => { const v = prompt("Référence de la prestation :", p.number); if (v && v.trim()) upd({ number: v.trim().toUpperCase() }); }}>{p.number}</span>
+              : <button style={{ ...s.btn("ghost"), fontSize: "11px", padding: "3px 9px", color: C.muted }}
+                  onClick={() => { const v = prompt("Entrez la référence (ex: PREST-229437) :", `PREST-${Date.now().toString().slice(-6)}`); if (v && v.trim()) upd({ number: v.trim().toUpperCase() }); }}>+ Réf</button>}
             <h1 style={{ fontFamily: C.display, fontSize: "22px", fontWeight: "800", letterSpacing: "-0.5px" }}>{p.label}</h1>
             <Badge color={statutColor(p.statut)}>{p.statut}</Badge>
           </div>
