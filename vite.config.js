@@ -234,6 +234,58 @@ function makeApiPlugin() {
         })
       })
 
+      // ── Vérification des mises à jour ──
+      server.middlewares.use('/api/update-check', (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method !== 'GET') { res.statusCode = 405; res.end('{"error":"method not allowed"}'); return }
+        const cwd = path.resolve('.')
+        execFile('git', ['fetch', 'origin'], { cwd }, (fetchErr) => {
+          if (fetchErr) { res.statusCode = 500; res.end(JSON.stringify({ error: 'git fetch échoué — le repo est-il accessible ? ' + fetchErr.message })); return }
+          execFile('git', ['rev-parse', 'HEAD'], { cwd }, (e1, localHash) => {
+            execFile('git', ['rev-parse', 'origin/main'], { cwd }, (e2, remoteHash) => {
+              if (e1 || e2) { res.statusCode = 500; res.end(JSON.stringify({ error: 'Impossible de lire les commits git' })); return }
+              const local = localHash.trim()
+              const remote = remoteHash.trim()
+              if (local === remote) { res.end(JSON.stringify({ upToDate: true, current: local.slice(0, 7) })); return }
+              execFile('git', ['log', `${local}..${remote}`, '--oneline', '--no-decorate'], { cwd }, (e3, log) => {
+                const commits = (log || '').trim().split('\n').filter(Boolean).map(line => {
+                  const [hash, ...rest] = line.split(' ')
+                  return { hash, message: rest.join(' ') }
+                })
+                res.end(JSON.stringify({ upToDate: false, current: local.slice(0, 7), remote: remote.slice(0, 7), commits }))
+              })
+            })
+          })
+        })
+      })
+
+      // ── Application d'une mise à jour ──
+      server.middlewares.use('/api/update-apply', (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('{"error":"method not allowed"}'); return }
+        const cwd = path.resolve('.')
+        // Détecter ce qui va changer avant le pull
+        execFile('git', ['diff', 'HEAD', 'origin/main', '--name-only'], { cwd }, (e0, changedFiles) => {
+          const files = (changedFiles || '').trim().split('\n').filter(Boolean)
+          const needsInstall = files.includes('package.json')
+          const needsRestart = files.some(f => f === 'vite.config.js' || f === 'package.json')
+          execFile('git', ['pull', 'origin', 'main'], { cwd }, (pullErr, pullOut) => {
+            if (pullErr) { res.statusCode = 500; res.end(JSON.stringify({ error: 'git pull échoué : ' + pullErr.message })); return }
+            const finish = () => {
+              res.end(JSON.stringify({ ok: true, needsRestart, needsInstall, log: pullOut.trim() }))
+              if (needsRestart) {
+                setTimeout(() => execFile('systemctl', ['restart', 'sasalele'], { detached: true }, () => {}), 1500)
+              }
+            }
+            if (needsInstall) {
+              execFile('npm', ['install', '--silent'], { cwd }, () => finish())
+            } else {
+              finish()
+            }
+          })
+        })
+      })
+
       server.middlewares.use('/api/users',   handle(USERS_FILE))
       server.middlewares.use('/api/invites', handle(INVITES_FILE))
       server.middlewares.use('/api/roles',   handle(ROLES_FILE))

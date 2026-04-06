@@ -8735,6 +8735,37 @@ function MaintenancePage({ data, update, session }) {
   const [tab, setTab] = useState("maintenance");
   const [syncStatus, setSyncStatus] = useState(null);
 
+  // Mises à jour
+  const [updateInfo, setUpdateInfo] = useState(null); // null | 'checking' | 'applying' | { upToDate, current, commits? } | { error }
+
+  const checkUpdate = async () => {
+    setUpdateInfo('checking');
+    try {
+      const res = await fetch('/api/update-check');
+      const json = await res.json();
+      setUpdateInfo(json.error ? { error: json.error } : json);
+    } catch (e) { setUpdateInfo({ error: e.message }); }
+  };
+
+  const applyUpdate = async () => {
+    setUpdateInfo('applying');
+    try {
+      const res = await fetch('/api/update-apply', { method: 'POST' });
+      const json = await res.json();
+      if (json.ok) {
+        if (json.needsRestart) {
+          setUpdateInfo({ done: true, message: 'Mise à jour appliquée — le service redémarre, rechargement dans 5s…' });
+          setTimeout(() => window.location.reload(), 5000);
+        } else {
+          setUpdateInfo({ done: true, message: 'Mise à jour appliquée — rechargement dans 2s…' });
+          setTimeout(() => window.location.reload(), 2000);
+        }
+      } else {
+        setUpdateInfo({ error: json.error || 'Erreur lors de la mise à jour' });
+      }
+    } catch (e) { setUpdateInfo({ error: e.message }); }
+  };
+
   // Sauvegardes
   const [backupFile, setBackupFile] = useState(null);
   const [importStatus, setImportStatus] = useState(null);
@@ -9049,6 +9080,79 @@ function MaintenancePage({ data, update, session }) {
           <div style={{ fontSize: "12px", color: C.accent, marginTop: "6px" }}>
             Synchronisation effectuée : {syncStatus}
           </div>
+        )}
+      </div>
+
+      <div style={s.card({ marginTop: "16px" })}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
+          <div style={{ fontFamily: C.display, fontWeight: "700", fontSize: "15px" }}>Mises à jour</div>
+          {updateInfo && updateInfo !== 'checking' && updateInfo !== 'applying' && !updateInfo.done && (
+            <span style={{ fontSize: "11px", padding: "3px 10px", borderRadius: "20px",
+              background: updateInfo.error ? `${C.danger}18` : updateInfo.upToDate ? `${C.accent}18` : `${C.warn}18`,
+              color: updateInfo.error ? C.danger : updateInfo.upToDate ? C.accent : C.warn,
+            }}>
+              {updateInfo.error ? "Erreur" : updateInfo.upToDate ? "A jour" : `${updateInfo.commits?.length} commit(s) disponible(s)`}
+            </span>
+          )}
+        </div>
+        <div style={{ color: C.muted, fontSize: "12px", marginBottom: "16px" }}>Met à jour l'application depuis le dépôt git</div>
+
+        {(!updateInfo || updateInfo === 'checking') && (
+          <button style={s.btn("secondary")} onClick={checkUpdate} disabled={updateInfo === 'checking'}>
+            {updateInfo === 'checking' ? "Vérification…" : "Vérifier les mises à jour"}
+          </button>
+        )}
+
+        {updateInfo === 'applying' && (
+          <div style={{ fontSize: "13px", color: C.muted }}>Application de la mise à jour en cours…</div>
+        )}
+
+        {updateInfo?.done && (
+          <div style={{ fontSize: "12px", padding: "8px 12px", borderRadius: "6px", background: `${C.accent}12`, color: C.accent }}>
+            {updateInfo.message}
+          </div>
+        )}
+
+        {updateInfo?.error && (
+          <div style={{ fontSize: "12px", padding: "8px 12px", borderRadius: "6px", background: `${C.danger}12`, color: C.danger, marginBottom: "10px" }}>
+            {updateInfo.error}
+          </div>
+        )}
+
+        {updateInfo && !updateInfo.done && updateInfo !== 'checking' && updateInfo !== 'applying' && !updateInfo.error && (
+          <div>
+            {updateInfo.upToDate ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <div style={{ fontSize: "13px", color: C.muted }}>
+                  Version actuelle : <span style={{ fontFamily: C.mono, color: C.text }}>{updateInfo.current}</span> — aucune mise à jour disponible.
+                </div>
+                <button style={s.btn("ghost", { fontSize: "12px", padding: "5px 12px" })} onClick={checkUpdate}>Revérifier</button>
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize: "13px", marginBottom: "12px", color: C.muted }}>
+                  Version actuelle : <span style={{ fontFamily: C.mono, color: C.text }}>{updateInfo.current}</span>
+                  {" → "}<span style={{ fontFamily: C.mono, color: C.accent }}>{updateInfo.remote}</span>
+                </div>
+                <div style={{ marginBottom: "14px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                  {updateInfo.commits?.map(c => (
+                    <div key={c.hash} style={{ display: "flex", gap: "10px", fontSize: "12px" }}>
+                      <span style={{ fontFamily: C.mono, color: C.muted, flexShrink: 0 }}>{c.hash}</span>
+                      <span style={{ color: C.text }}>{c.message}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button style={s.btn("primary")} onClick={applyUpdate}>Mettre à jour</button>
+                  <button style={s.btn("ghost", { fontSize: "12px", padding: "5px 12px" })} onClick={() => setUpdateInfo(null)}>Annuler</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {updateInfo?.error && (
+          <button style={{ ...s.btn("ghost", { fontSize: "12px", padding: "5px 12px" }), marginTop: "8px" }} onClick={() => setUpdateInfo(null)}>Réessayer</button>
         )}
       </div>
 
