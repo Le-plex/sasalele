@@ -2819,17 +2819,13 @@ function LocationDetail({ loc, locations, inventory, catalog, assoc, update, cal
         const tr = loc.transport || {};
         const updTr = (patch) => updLoc({ transport: { ...tr, ...patch } });
         const extraLines = tr.extraLines || [];
-        const km = parseFloat(tr.distanceKm)||0, conso = parseFloat(tr.fuelConso)||0, prixL = parseFloat(tr.fuelPrice)||0;
-        const fuelCost = km > 0 && conso > 0 && prixL > 0 ? Math.round(km*conso/100*prixL*100)/100 : 0;
-        const tolls = parseFloat(tr.tolls)||0;
-        const rkm = parseFloat(tr.retourDistanceKm)||0, rconso = parseFloat(tr.retourFuelConso)||0, rprixL = parseFloat(tr.retourFuelPrice)||0;
-        const retourFuelCost = rkm > 0 && rconso > 0 && rprixL > 0 ? Math.round(rkm*rconso/100*rprixL*100)/100 : 0;
-        const retourTolls = parseFloat(tr.retourTolls)||0;
+        const fuelCost = parseFloat(tr.fuelAmount)||0;
+        const retourFuelCost = parseFloat(tr.retourFuelAmount)||0;
         const extraTotal = extraLines.reduce((a,l) => a+(parseFloat(l.amount)||0), 0);
         const vr = tr.vehicleRental || {};
         const rentalCost = (vr.enabled && parseFloat(vr.pricePerDay) > 0 && parseFloat(vr.days) > 0)
           ? Math.round(parseFloat(vr.pricePerDay) * parseFloat(vr.days) * 100) / 100 : 0;
-        const trTotal = fuelCost + tolls + retourFuelCost + retourTolls + extraTotal + rentalCost;
+        const trTotal = fuelCost + (parseFloat(tr.tolls)||0) + retourFuelCost + (parseFloat(tr.retourTolls)||0) + extraTotal + rentalCost;
         const VR_TYPES_LOC = ["Voiture", "Camionnette", "Camion", "Utilitaire", "Van", "Minibus", "Autre"];
         return (
           <div style={s.card({ marginBottom: "14px" })}>
@@ -2837,27 +2833,21 @@ function LocationDetail({ loc, locations, inventory, catalog, assoc, update, cal
 
             {/* Aller */}
             <div style={{ fontSize: "11px", color: C.accent, fontWeight: "700", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "10px" }}>Aller</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "10px", marginBottom: "10px" }}>
-              <div><label style={s.label}>Distance (km)</label><input type="number" min="0" style={s.inp()} value={tr.distanceKm||""} onChange={e => updTr({ distanceKm: e.target.value })} placeholder="0" /></div>
-              <div><label style={s.label}>Conso (L/100 km)</label><input type="number" min="0" step="0.1" style={s.inp()} value={tr.fuelConso||""} onChange={e => updTr({ fuelConso: e.target.value })} placeholder="7.5" /></div>
-              <div><label style={s.label}>Prix carburant (€/L)</label><input type="number" min="0" step="0.01" style={s.inp()} value={tr.fuelPrice||""} onChange={e => updTr({ fuelPrice: e.target.value })} placeholder="1.85" /></div>
-              <div><label style={s.label}>Péages (€)</label><input type="number" min="0" step="0.01" style={s.inp()} value={tr.tolls||""} onChange={e => updTr({ tolls: e.target.value })} placeholder="0" /></div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "10px" }}>
+              <div><label style={s.label}>Carburant aller (€)</label><input type="number" min="0" step="0.01" style={s.inp()} value={tr.fuelAmount||""} onChange={e => updTr({ fuelAmount: e.target.value })} placeholder="0" /></div>
+              <div><label style={s.label}>Péages aller (€)</label><input type="number" min="0" step="0.01" style={s.inp()} value={tr.tolls||""} onChange={e => updTr({ tolls: e.target.value })} placeholder="0" /></div>
             </div>
-            {fuelCost > 0 && <div style={{ fontSize: "12px", color: C.info, marginBottom: "10px" }}>Aller — carburant : {fuelCost.toFixed(2)} €</div>}
 
             {/* Retour */}
             <div style={{ borderTop: `1px solid ${C.border}`, marginTop: "10px", paddingTop: "14px" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
                 <div style={{ fontSize: "11px", color: "#a78bfa", fontWeight: "700", textTransform: "uppercase", letterSpacing: "1px" }}>Retour</div>
-                <button style={s.btn("ghost", { fontSize: "11px", padding: "3px 10px" })} onClick={() => updTr({ retourDistanceKm: tr.distanceKm||"", retourFuelConso: tr.fuelConso||"", retourFuelPrice: tr.fuelPrice||"", retourTolls: tr.tolls||"" })}>Copier depuis l'aller</button>
+                <button style={s.btn("ghost", { fontSize: "11px", padding: "3px 10px" })} onClick={() => updTr({ retourFuelAmount: tr.fuelAmount||"", retourTolls: tr.tolls||"" })}>Copier depuis l'aller</button>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "10px", marginBottom: "10px" }}>
-                <div><label style={s.label}>Distance (km)</label><input type="number" min="0" style={s.inp()} value={tr.retourDistanceKm||""} onChange={e => updTr({ retourDistanceKm: e.target.value })} placeholder="0" /></div>
-                <div><label style={s.label}>Conso (L/100 km)</label><input type="number" min="0" step="0.1" style={s.inp()} value={tr.retourFuelConso||""} onChange={e => updTr({ retourFuelConso: e.target.value })} placeholder="7.5" /></div>
-                <div><label style={s.label}>Prix carburant (€/L)</label><input type="number" min="0" step="0.01" style={s.inp()} value={tr.retourFuelPrice||""} onChange={e => updTr({ retourFuelPrice: e.target.value })} placeholder="1.85" /></div>
-                <div><label style={s.label}>Péages (€)</label><input type="number" min="0" step="0.01" style={s.inp()} value={tr.retourTolls||""} onChange={e => updTr({ retourTolls: e.target.value })} placeholder="0" /></div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "10px" }}>
+                <div><label style={s.label}>Carburant retour (€)</label><input type="number" min="0" step="0.01" style={s.inp()} value={tr.retourFuelAmount||""} onChange={e => updTr({ retourFuelAmount: e.target.value })} placeholder="0" /></div>
+                <div><label style={s.label}>Péages retour (€)</label><input type="number" min="0" step="0.01" style={s.inp()} value={tr.retourTolls||""} onChange={e => updTr({ retourTolls: e.target.value })} placeholder="0" /></div>
               </div>
-              {retourFuelCost > 0 && <div style={{ fontSize: "12px", color: C.info, marginBottom: "10px" }}>Retour — carburant : {retourFuelCost.toFixed(2)} €</div>}
             </div>
 
             {/* Location de véhicule */}
@@ -3056,11 +3046,9 @@ ${(loc.services||[]).map(s=>`<tr><td>${s.label}</td><td style="text-align:center
     const total = locTotal(loc);
     const trCost = calcTransportCost(loc.transport);
     const tr = loc.transport || {};
-    const allerKm = parseFloat(tr.distanceKm)||0, allerConso = parseFloat(tr.fuelConso)||0, allerPrix = parseFloat(tr.fuelPrice)||0;
-    const allerFuel = allerKm > 0 && allerConso > 0 && allerPrix > 0 ? Math.round(allerKm*allerConso/100*allerPrix*100)/100 : 0;
+    const allerFuel = (tr.fuelAmount != null && tr.fuelAmount !== "") ? parseFloat(tr.fuelAmount)||0 : (() => { const km=parseFloat(tr.distanceKm)||0,conso=parseFloat(tr.fuelConso)||0,p=parseFloat(tr.fuelPrice)||0; return km>0&&conso>0&&p>0?Math.round(km*conso/100*p*100)/100:0; })();
     const allerTotal = allerFuel + (parseFloat(tr.tolls)||0);
-    const retourKm = parseFloat(tr.retourDistanceKm)||0, retourConso = parseFloat(tr.retourFuelConso)||0, retourPrix = parseFloat(tr.retourFuelPrice)||0;
-    const retourFuel = retourKm > 0 && retourConso > 0 && retourPrix > 0 ? Math.round(retourKm*retourConso/100*retourPrix*100)/100 : 0;
+    const retourFuel = (tr.retourFuelAmount != null && tr.retourFuelAmount !== "") ? parseFloat(tr.retourFuelAmount)||0 : (() => { const km=parseFloat(tr.retourDistanceKm)||0,conso=parseFloat(tr.retourFuelConso)||0,p=parseFloat(tr.retourFuelPrice)||0; return km>0&&conso>0&&p>0?Math.round(km*conso/100*p*100)/100:0; })();
     const retourTotal = retourFuel + (parseFloat(tr.retourTolls)||0);
     const vrd = tr.vehicleRental || {};
     const rentalCostD = (vrd.enabled && parseFloat(vrd.pricePerDay) > 0 && parseFloat(vrd.days) > 0)
@@ -3077,8 +3065,8 @@ ${(loc.services||[]).map(s=>`<tr><td>${s.label}</td><td style="color:#888">${s.u
 <tr class="tf"><td colspan="4">Sous-total services</td><td class="amt">${fmt((loc.services||[]).reduce((a,s)=>a+svcTotal(s),0))}</td></tr>
 </tbody></table>`:""}
 ${trCost>0?`<table><thead><tr><th>Transport</th><th class="amt">Total HT</th></tr></thead><tbody>
-${allerTotal>0?`<tr><td>Transport aller${allerKm>0?` — ${allerKm} km`:""}</td><td class="amt">${fmt(allerTotal)}</td></tr>`:""}
-${retourTotal>0?`<tr><td>Transport retour${retourKm>0?` — ${retourKm} km`:""}</td><td class="amt">${fmt(retourTotal)}</td></tr>`:""}
+${allerTotal>0?`<tr><td>Transport aller</td><td class="amt">${fmt(allerTotal)}</td></tr>`:""}
+${retourTotal>0?`<tr><td>Transport retour</td><td class="amt">${fmt(retourTotal)}</td></tr>`:""}
 ${rentalCostD>0?`<tr><td>Location ${vrd.type||"véhicule"}${vrd.label?` — ${vrd.label}`:""}${vrd.days?` (${vrd.days}j × ${fmt(parseFloat(vrd.pricePerDay)||0)}/j)`:""}</td><td class="amt">${fmt(rentalCostD)}</td></tr>`:""}
 ${(tr.extraLines||[]).filter(l=>parseFloat(l.amount)>0).map(l=>`<tr><td>${l.label||"Frais transport"}</td><td class="amt">${fmt(parseFloat(l.amount)||0)}</td></tr>`).join("")}
 <tr class="tf"><td>Sous-total transport</td><td class="amt">${fmt(trCost)}</td></tr>
@@ -3280,11 +3268,9 @@ ${loc.notes?`<div class="art"><div class="art-title">Notes complémentaires</div
     const num = `FAC-${loc.number}`;
     const trCost = calcTransportCost(loc.transport);
     const tr = loc.transport || {};
-    const allerKm = parseFloat(tr.distanceKm)||0, allerConso = parseFloat(tr.fuelConso)||0, allerPrix = parseFloat(tr.fuelPrice)||0;
-    const allerFuel = allerKm > 0 && allerConso > 0 && allerPrix > 0 ? Math.round(allerKm*allerConso/100*allerPrix*100)/100 : 0;
+    const allerFuel = (tr.fuelAmount != null && tr.fuelAmount !== "") ? parseFloat(tr.fuelAmount)||0 : (() => { const km=parseFloat(tr.distanceKm)||0,conso=parseFloat(tr.fuelConso)||0,p=parseFloat(tr.fuelPrice)||0; return km>0&&conso>0&&p>0?Math.round(km*conso/100*p*100)/100:0; })();
     const allerTotal = allerFuel + (parseFloat(tr.tolls)||0);
-    const retourKm = parseFloat(tr.retourDistanceKm)||0, retourConso = parseFloat(tr.retourFuelConso)||0, retourPrix = parseFloat(tr.retourFuelPrice)||0;
-    const retourFuel = retourKm > 0 && retourConso > 0 && retourPrix > 0 ? Math.round(retourKm*retourConso/100*retourPrix*100)/100 : 0;
+    const retourFuel = (tr.retourFuelAmount != null && tr.retourFuelAmount !== "") ? parseFloat(tr.retourFuelAmount)||0 : (() => { const km=parseFloat(tr.retourDistanceKm)||0,conso=parseFloat(tr.retourFuelConso)||0,p=parseFloat(tr.retourFuelPrice)||0; return km>0&&conso>0&&p>0?Math.round(km*conso/100*p*100)/100:0; })();
     const retourTotal = retourFuel + (parseFloat(tr.retourTolls)||0);
     const vrf = tr.vehicleRental || {};
     const rentalCostF = (vrf.enabled && parseFloat(vrf.pricePerDay) > 0 && parseFloat(vrf.days) > 0)
@@ -3301,8 +3287,8 @@ ${(loc.services||[]).map(s=>`<tr><td>${s.label}</td><td style="color:#888">${s.u
 <tr class="tf"><td colspan="4">Sous-total services</td><td class="amt">${fmt((loc.services||[]).reduce((a,s)=>a+svcTotal(s),0))}</td></tr>
 </tbody></table>`:""}
 ${trCost>0?`<table><thead><tr><th>Transport</th><th class="amt">Total HT</th></tr></thead><tbody>
-${allerTotal>0?`<tr><td>Transport aller${allerKm>0?` — ${allerKm} km`:""}</td><td class="amt">${fmt(allerTotal)}</td></tr>`:""}
-${retourTotal>0?`<tr><td>Transport retour${retourKm>0?` — ${retourKm} km`:""}</td><td class="amt">${fmt(retourTotal)}</td></tr>`:""}
+${allerTotal>0?`<tr><td>Transport aller</td><td class="amt">${fmt(allerTotal)}</td></tr>`:""}
+${retourTotal>0?`<tr><td>Transport retour</td><td class="amt">${fmt(retourTotal)}</td></tr>`:""}
 ${rentalCostF>0?`<tr><td>Location ${vrf.type||"véhicule"}${vrf.label?` — ${vrf.label}`:""}${vrf.days?` (${vrf.days}j × ${fmt(parseFloat(vrf.pricePerDay)||0)}/j)`:""}</td><td class="amt">${fmt(rentalCostF)}</td></tr>`:""}
 ${(tr.extraLines||[]).filter(l=>parseFloat(l.amount)>0).map(l=>`<tr><td>${l.label||"Frais transport"}</td><td class="amt">${fmt(parseFloat(l.amount)||0)}</td></tr>`).join("")}
 <tr class="tf"><td>Sous-total transport</td><td class="amt">${fmt(trCost)}</td></tr>
@@ -4026,10 +4012,13 @@ function PrestationsPage({ data, update, users, contacts = [] }) {
 
 function calcTransportCost(tr) {
   if (!tr) return 0;
-  const km = parseFloat(tr.distanceKm)||0, conso = parseFloat(tr.fuelConso)||0, prixL = parseFloat(tr.fuelPrice)||0;
-  const allerFuel = km > 0 && conso > 0 && prixL > 0 ? Math.round(km*conso/100*prixL*100)/100 : 0;
-  const rkm = parseFloat(tr.retourDistanceKm)||0, rconso = parseFloat(tr.retourFuelConso)||0, rprixL = parseFloat(tr.retourFuelPrice)||0;
-  const retourFuel = rkm > 0 && rconso > 0 && rprixL > 0 ? Math.round(rkm*rconso/100*rprixL*100)/100 : 0;
+  // Carburant : montant direct si renseigné, sinon calcul km×conso×prix (rétrocompat)
+  const allerFuel = (tr.fuelAmount != null && tr.fuelAmount !== "")
+    ? parseFloat(tr.fuelAmount)||0
+    : (() => { const km = parseFloat(tr.distanceKm)||0, conso = parseFloat(tr.fuelConso)||0, prixL = parseFloat(tr.fuelPrice)||0; return km > 0 && conso > 0 && prixL > 0 ? Math.round(km*conso/100*prixL*100)/100 : 0; })();
+  const retourFuel = (tr.retourFuelAmount != null && tr.retourFuelAmount !== "")
+    ? parseFloat(tr.retourFuelAmount)||0
+    : (() => { const rkm = parseFloat(tr.retourDistanceKm)||0, rconso = parseFloat(tr.retourFuelConso)||0, rprixL = parseFloat(tr.retourFuelPrice)||0; return rkm > 0 && rconso > 0 && rprixL > 0 ? Math.round(rkm*rconso/100*rprixL*100)/100 : 0; })();
   const vr = tr.vehicleRental;
   const rentalCost = (vr?.enabled && parseFloat(vr.pricePerDay) > 0 && parseFloat(vr.days) > 0)
     ? Math.round(parseFloat(vr.pricePerDay) * parseFloat(vr.days) * 100) / 100 : 0;
@@ -4154,18 +4143,16 @@ footer{border-top:1px solid #eee;padding-top:12px;color:#aaa;font-size:11px;marg
     const gearLines = (p.gear||[]).map(g => ({ label: `${g.itemName} × ${g.days}j`, qty: g.qty, unitPrice: g.unitPrice, unit: g.priceType }));
     const svcLines  = (p.services||[]).map(sv => ({ label: sv.label, qty: sv.qty, unitPrice: sv.unitPrice, unit: sv.unit }));
     const trDoc = p.transport || {};
-    const trDocKm = parseFloat(trDoc.distanceKm)||0, trDocConso = parseFloat(trDoc.fuelConso)||0, trDocPrixL = parseFloat(trDoc.fuelPrice)||0;
-    const trDocAllerFuel = trDocKm > 0 && trDocConso > 0 && trDocPrixL > 0 ? Math.round(trDocKm*trDocConso/100*trDocPrixL*100)/100 : 0;
-    const trDocRkm = parseFloat(trDoc.retourDistanceKm)||0, trDocRconso = parseFloat(trDoc.retourFuelConso)||0, trDocRprixL = parseFloat(trDoc.retourFuelPrice)||0;
-    const trDocRetourFuel = trDocRkm > 0 && trDocRconso > 0 && trDocRprixL > 0 ? Math.round(trDocRkm*trDocRconso/100*trDocRprixL*100)/100 : 0;
+    const trDocAllerFuel = (trDoc.fuelAmount != null && trDoc.fuelAmount !== "") ? parseFloat(trDoc.fuelAmount)||0 : (() => { const km=parseFloat(trDoc.distanceKm)||0,conso=parseFloat(trDoc.fuelConso)||0,p2=parseFloat(trDoc.fuelPrice)||0; return km>0&&conso>0&&p2>0?Math.round(km*conso/100*p2*100)/100:0; })();
+    const trDocRetourFuel = (trDoc.retourFuelAmount != null && trDoc.retourFuelAmount !== "") ? parseFloat(trDoc.retourFuelAmount)||0 : (() => { const km=parseFloat(trDoc.retourDistanceKm)||0,conso=parseFloat(trDoc.retourFuelConso)||0,p2=parseFloat(trDoc.retourFuelPrice)||0; return km>0&&conso>0&&p2>0?Math.round(km*conso/100*p2*100)/100:0; })();
     const trDocAllerTotal = trDocAllerFuel + (parseFloat(trDoc.tolls)||0);
     const trDocRetourTotal = trDocRetourFuel + (parseFloat(trDoc.retourTolls)||0);
     const trDocVR = trDoc.vehicleRental || {};
     const trDocRentalCost = (trDocVR.enabled && parseFloat(trDocVR.pricePerDay) > 0 && parseFloat(trDocVR.days) > 0)
       ? Math.round(parseFloat(trDocVR.pricePerDay)*parseFloat(trDocVR.days)*100)/100 : 0;
     const trLines = [
-      ...(trDocAllerTotal > 0 ? [{ label: `Transport aller${trDocKm > 0 ? ` — ${trDocKm} km` : ""}`, qty: 1, unitPrice: trDocAllerTotal, unit: "forfait" }] : []),
-      ...(trDocRetourTotal > 0 ? [{ label: `Transport retour${trDocRkm > 0 ? ` — ${trDocRkm} km` : ""}`, qty: 1, unitPrice: trDocRetourTotal, unit: "forfait" }] : []),
+      ...(trDocAllerTotal > 0 ? [{ label: "Transport aller", qty: 1, unitPrice: trDocAllerTotal, unit: "forfait" }] : []),
+      ...(trDocRetourTotal > 0 ? [{ label: "Transport retour", qty: 1, unitPrice: trDocRetourTotal, unit: "forfait" }] : []),
       ...(trDocRentalCost > 0 ? [{ label: `Location ${trDocVR.type||"véhicule"}${trDocVR.label ? ` — ${trDocVR.label}` : ""}`, qty: parseFloat(trDocVR.days)||1, unitPrice: parseFloat(trDocVR.pricePerDay)||0, unit: "jour" }] : []),
       ...(trDoc.extraLines||[]).filter(l=>parseFloat(l.amount)>0).map(l => ({ label: l.label||"Frais transport", qty: 1, unitPrice: parseFloat(l.amount)||0, unit: "forfait" })),
     ];
@@ -4412,12 +4399,7 @@ body{font-size:12.5px}.contrat-title{font-size:22px;font-weight:800;letter-spaci
     const retourStopsDoc = tr.retourStops || [];
     const today_str = new Date().toLocaleDateString("fr-FR", { day:"2-digit", month:"long", year:"numeric" });
     const assocName = data.assoc?.name || "Association";
-    const fuelCost = (() => {
-      const km = parseFloat(tr.distanceKm)||0;
-      const conso = parseFloat(tr.fuelConso)||0;
-      const prixL = parseFloat(tr.fuelPrice)||0;
-      return km > 0 && conso > 0 && prixL > 0 ? Math.round(km * conso / 100 * prixL * 100) / 100 : 0;
-    })();
+    const fuelCost = (tr.fuelAmount != null && tr.fuelAmount !== "") ? parseFloat(tr.fuelAmount)||0 : (() => { const km=parseFloat(tr.distanceKm)||0,conso=parseFloat(tr.fuelConso)||0,p2=parseFloat(tr.fuelPrice)||0; return km>0&&conso>0&&p2>0?Math.round(km*conso/100*p2*100)/100:0; })();
     const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
 <title>Feuille de route — ${p.label}</title>
 <style>
@@ -4439,10 +4421,9 @@ footer{margin-top:28px;padding-top:10px;border-top:1px solid #ddd;display:flex;j
 <h1>Feuille de route — ${p.label}</h1>
 <div class="meta">${assocName} · ${(p.dateStart||p.date)||""}${p.timeStart ? " "+p.timeStart : ""}${p.dateEnd && p.dateEnd !== (p.dateStart||p.date) ? " → "+p.dateEnd+(p.timeEnd?" "+p.timeEnd:"") : ""}</div>
 
-${tr.distanceKm || tr.fuelConso || tr.fuelPrice || tr.tolls ? `<div class="info-grid">
-  ${tr.distanceKm ? `<div class="info-box"><div class="info-val">${tr.distanceKm} km</div><div class="info-lbl">Distance totale</div></div>` : ""}
-  ${fuelCost > 0 ? `<div class="info-box"><div class="info-val">${fuelCost.toFixed(2)} €</div><div class="info-lbl">Carburant estimé</div></div>` : ""}
-  ${tr.tolls ? `<div class="info-box"><div class="info-val">${parseFloat(tr.tolls).toFixed(2)} €</div><div class="info-lbl">Péages estimés</div></div>` : ""}
+${fuelCost > 0 || tr.tolls ? `<div class="info-grid">
+  ${fuelCost > 0 ? `<div class="info-box"><div class="info-val">${fuelCost.toFixed(2)} €</div><div class="info-lbl">Carburant aller</div></div>` : ""}
+  ${tr.tolls ? `<div class="info-box"><div class="info-val">${parseFloat(tr.tolls).toFixed(2)} €</div><div class="info-lbl">Péages aller</div></div>` : ""}
 </div>` : ""}
 
 <h2>Itinéraire</h2>
@@ -4494,15 +4475,9 @@ ${tr.notes ? `<h2>Notes</h2><p style="color:#444;font-size:13px">${tr.notes}</p>
     const vehicles = tr.vehicles || [];
     const today_str = new Date().toLocaleDateString("fr-FR", { day:"2-digit", month:"long", year:"numeric" });
     const assocName = data.assoc?.name || "Association";
-    const km = parseFloat(tr.distanceKm)||0;
-    const conso = parseFloat(tr.fuelConso)||0;
-    const prixL = parseFloat(tr.fuelPrice)||0;
-    const fuelCost = km > 0 && conso > 0 && prixL > 0 ? Math.round(km * conso / 100 * prixL * 100) / 100 : 0;
+    const fuelCost = (tr.fuelAmount != null && tr.fuelAmount !== "") ? parseFloat(tr.fuelAmount)||0 : (() => { const km=parseFloat(tr.distanceKm)||0,conso=parseFloat(tr.fuelConso)||0,p2=parseFloat(tr.fuelPrice)||0; return km>0&&conso>0&&p2>0?Math.round(km*conso/100*p2*100)/100:0; })();
     const tolls = parseFloat(tr.tolls)||0;
-    const rkm = parseFloat(tr.retourDistanceKm)||0;
-    const rconso = parseFloat(tr.retourFuelConso)||0;
-    const rprixL = parseFloat(tr.retourFuelPrice)||0;
-    const retourFuelCostDoc = rkm > 0 && rconso > 0 && rprixL > 0 ? Math.round(rkm * rconso / 100 * rprixL * 100) / 100 : 0;
+    const retourFuelCostDoc = (tr.retourFuelAmount != null && tr.retourFuelAmount !== "") ? parseFloat(tr.retourFuelAmount)||0 : (() => { const km=parseFloat(tr.retourDistanceKm)||0,conso=parseFloat(tr.retourFuelConso)||0,p2=parseFloat(tr.retourFuelPrice)||0; return km>0&&conso>0&&p2>0?Math.round(km*conso/100*p2*100)/100:0; })();
     const retourTollsDoc = parseFloat(tr.retourTolls)||0;
     const extraLines = tr.extraLines || [];
     const subtotal = fuelCost + tolls + retourFuelCostDoc + retourTollsDoc + extraLines.reduce((a, l) => a + (parseFloat(l.amount)||0), 0);
@@ -4529,22 +4504,20 @@ footer{margin-top:28px;padding-top:10px;border-top:1px solid #ddd;display:flex;j
 <div class="info-row">
   ${tr.departAddress ? `<div class="info-block"><div class="info-label">Départ aller</div><div class="info-val">${tr.departAddress}</div></div>` : ""}
   ${tr.arrivalAddress ? `<div class="info-block"><div class="info-label">Arrivée aller</div><div class="info-val">${tr.arrivalAddress}</div></div>` : ""}
-  ${km > 0 ? `<div class="info-block"><div class="info-label">Distance aller</div><div class="info-val">${km} km</div></div>` : ""}
-  ${rkm > 0 ? `<div class="info-block"><div class="info-label">Distance retour</div><div class="info-val">${rkm} km</div></div>` : ""}
   ${vehicles.length > 0 ? `<div class="info-block"><div class="info-label">Véhicules</div><div class="info-val">${vehicles.length}</div></div>` : ""}
 </div>
 
 <table>
-  <tr><th>Désignation</th><th style="text-align:right">Détail</th><th style="text-align:right">Montant</th></tr>
-  ${(fuelCost > 0 || tolls > 0) ? `<tr class="trip-header"><td colspan="3">Aller</td></tr>` : ""}
-  ${fuelCost > 0 ? `<tr><td>Carburant aller (${km} km × ${conso} L/100 × ${prixL} €/L${vehicles.length > 1 ? " × "+vehicles.length+" véh." : ""})</td><td class="right">${(km*conso/100).toFixed(2)} L</td><td class="right">${fuelCost.toFixed(2)} €</td></tr>` : ""}
-  ${tolls > 0 ? `<tr><td>Péages aller</td><td class="right">—</td><td class="right">${tolls.toFixed(2)} €</td></tr>` : ""}
-  ${(retourFuelCostDoc > 0 || retourTollsDoc > 0) ? `<tr class="trip-header"><td colspan="3">Retour</td></tr>` : ""}
-  ${retourFuelCostDoc > 0 ? `<tr><td>Carburant retour (${rkm} km × ${rconso} L/100 × ${rprixL} €/L${vehicles.length > 1 ? " × "+vehicles.length+" véh." : ""})</td><td class="right">${(rkm*rconso/100).toFixed(2)} L</td><td class="right">${retourFuelCostDoc.toFixed(2)} €</td></tr>` : ""}
-  ${retourTollsDoc > 0 ? `<tr><td>Péages retour</td><td class="right">—</td><td class="right">${retourTollsDoc.toFixed(2)} €</td></tr>` : ""}
-  ${extraLines.length > 0 ? `<tr class="trip-header"><td colspan="3">Frais supplémentaires</td></tr>` : ""}
-  ${extraLines.map(l => `<tr><td>${l.label||"Ligne supplémentaire"}</td><td class="right">—</td><td class="right">${(parseFloat(l.amount)||0).toFixed(2)} €</td></tr>`).join("")}
-  <tr class="total-row"><td colspan="2">Total transport HT</td><td class="right">${subtotal.toFixed(2)} €</td></tr>
+  <tr><th>Désignation</th><th style="text-align:right">Montant</th></tr>
+  ${(fuelCost > 0 || tolls > 0) ? `<tr class="trip-header"><td colspan="2">Aller</td></tr>` : ""}
+  ${fuelCost > 0 ? `<tr><td>Carburant aller</td><td class="right">${fuelCost.toFixed(2)} €</td></tr>` : ""}
+  ${tolls > 0 ? `<tr><td>Péages aller</td><td class="right">${tolls.toFixed(2)} €</td></tr>` : ""}
+  ${(retourFuelCostDoc > 0 || retourTollsDoc > 0) ? `<tr class="trip-header"><td colspan="2">Retour</td></tr>` : ""}
+  ${retourFuelCostDoc > 0 ? `<tr><td>Carburant retour</td><td class="right">${retourFuelCostDoc.toFixed(2)} €</td></tr>` : ""}
+  ${retourTollsDoc > 0 ? `<tr><td>Péages retour</td><td class="right">${retourTollsDoc.toFixed(2)} €</td></tr>` : ""}
+  ${extraLines.length > 0 ? `<tr class="trip-header"><td colspan="2">Frais supplémentaires</td></tr>` : ""}
+  ${extraLines.map(l => `<tr><td>${l.label||"Ligne supplémentaire"}</td><td class="right">${(parseFloat(l.amount)||0).toFixed(2)} €</td></tr>`).join("")}
+  <tr class="total-row"><td>Total transport HT</td><td class="right">${subtotal.toFixed(2)} €</td></tr>
 </table>
 
 ${vehicles.length > 0 ? `<div class="section-title">Répartition des équipes</div>
@@ -5085,21 +5058,13 @@ ${vehicles.length > 0 ? `<div class="section-title">Répartition des équipes</d
         const stops = tr.stops || [];
         const retourStops = tr.retourStops || [];
         const extraLines = tr.extraLines || [];
-        const km = parseFloat(tr.distanceKm)||0;
-        const conso = parseFloat(tr.fuelConso)||0;
-        const prixL = parseFloat(tr.fuelPrice)||0;
-        const fuelCost = km > 0 && conso > 0 && prixL > 0 ? Math.round(km * conso / 100 * prixL * 100) / 100 : 0;
-        const tolls = parseFloat(tr.tolls)||0;
-        const rkm = parseFloat(tr.retourDistanceKm)||0;
-        const rconso = parseFloat(tr.retourFuelConso)||0;
-        const rprixL = parseFloat(tr.retourFuelPrice)||0;
-        const retourFuelCost = rkm > 0 && rconso > 0 && rprixL > 0 ? Math.round(rkm * rconso / 100 * rprixL * 100) / 100 : 0;
-        const retourTolls = parseFloat(tr.retourTolls)||0;
+        const fuelCost = parseFloat(tr.fuelAmount)||0;
+        const retourFuelCost = parseFloat(tr.retourFuelAmount)||0;
         const extraTotal = extraLines.reduce((a, l) => a + (parseFloat(l.amount)||0), 0);
         const vr = tr.vehicleRental || {};
         const rentalCost = (vr.enabled && parseFloat(vr.pricePerDay) > 0 && parseFloat(vr.days) > 0)
           ? Math.round(parseFloat(vr.pricePerDay) * parseFloat(vr.days) * 100) / 100 : 0;
-        const transportTotal = fuelCost + tolls + retourFuelCost + retourTolls + extraTotal + rentalCost;
+        const transportTotal = fuelCost + (parseFloat(tr.tolls)||0) + retourFuelCost + (parseFloat(tr.retourTolls)||0) + extraTotal + rentalCost;
         const VTYPES = ["Berline", "Break", "Van", "Camion", "Utilitaire", "Autre"];
         const VR_TYPES = ["Voiture", "Camionnette", "Camion", "Utilitaire", "Van", "Minibus", "Autre"];
         return (
@@ -5303,61 +5268,33 @@ ${vehicles.length > 0 ? `<div class="section-title">Répartition des équipes</d
 
               {/* Aller */}
               <div style={{ fontSize: "11px", color: C.accent, fontWeight: "700", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "10px" }}>Aller</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "12px", marginBottom: "12px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
                 <div>
-                  <label style={s.label}>Distance (km)</label>
-                  <input type="number" min="0" style={s.inp()} value={tr.distanceKm||""} onChange={e => updTr({ distanceKm: e.target.value })} placeholder="0" />
+                  <label style={s.label}>Carburant aller (€)</label>
+                  <input type="number" min="0" step="0.01" style={s.inp()} value={tr.fuelAmount||""} onChange={e => updTr({ fuelAmount: e.target.value })} placeholder="0" />
                 </div>
                 <div>
-                  <label style={s.label}>Consommation (L/100 km)</label>
-                  <input type="number" min="0" step="0.1" style={s.inp()} value={tr.fuelConso||""} onChange={e => updTr({ fuelConso: e.target.value })} placeholder="7.5" />
-                </div>
-                <div>
-                  <label style={s.label}>Prix carburant (€/L)</label>
-                  <input type="number" min="0" step="0.01" style={s.inp()} value={tr.fuelPrice||""} onChange={e => updTr({ fuelPrice: e.target.value })} placeholder="1.85" />
-                </div>
-                <div>
-                  <label style={s.label}>Péages (€)</label>
+                  <label style={s.label}>Péages aller (€)</label>
                   <input type="number" min="0" step="0.01" style={s.inp()} value={tr.tolls||""} onChange={e => updTr({ tolls: e.target.value })} placeholder="0" />
                 </div>
               </div>
-              {fuelCost > 0 && (
-                <div style={{ background: `${C.info}12`, border: `1px solid ${C.info}30`, borderRadius: "8px", padding: "10px 14px", marginBottom: "14px", display: "flex", gap: "8px", fontSize: "13px" }}>
-                  <span style={{ color: C.info }}>⛽</span>
-                  <span>Aller — Carburant : <strong style={{ color: C.info }}>{fuelCost.toFixed(2)} €</strong> ({km} km × {conso} L/100 × {prixL} €/L{vehicles.length > 1 ? ` × ${vehicles.length} véhicules` : ""})</span>
-                </div>
-              )}
 
               {/* Retour */}
               <div style={{ borderTop: `1px solid ${C.border}`, marginTop: "14px", paddingTop: "14px" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
                   <div style={{ fontSize: "11px", color: "#a78bfa", fontWeight: "700", textTransform: "uppercase", letterSpacing: "1px" }}>Retour</div>
-                  <button style={s.btn("ghost", { fontSize: "11px", padding: "3px 10px" })} onClick={() => updTr({ retourDistanceKm: tr.distanceKm||"", retourFuelConso: tr.fuelConso||"", retourFuelPrice: tr.fuelPrice||"", retourTolls: tr.tolls||"" })}>Copier depuis l'aller</button>
+                  <button style={s.btn("ghost", { fontSize: "11px", padding: "3px 10px" })} onClick={() => updTr({ retourFuelAmount: tr.fuelAmount||"", retourTolls: tr.tolls||"" })}>Copier depuis l'aller</button>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "12px", marginBottom: "12px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
                   <div>
-                    <label style={s.label}>Distance (km)</label>
-                    <input type="number" min="0" style={s.inp()} value={tr.retourDistanceKm||""} onChange={e => updTr({ retourDistanceKm: e.target.value })} placeholder="0" />
+                    <label style={s.label}>Carburant retour (€)</label>
+                    <input type="number" min="0" step="0.01" style={s.inp()} value={tr.retourFuelAmount||""} onChange={e => updTr({ retourFuelAmount: e.target.value })} placeholder="0" />
                   </div>
                   <div>
-                    <label style={s.label}>Consommation (L/100 km)</label>
-                    <input type="number" min="0" step="0.1" style={s.inp()} value={tr.retourFuelConso||""} onChange={e => updTr({ retourFuelConso: e.target.value })} placeholder="7.5" />
-                  </div>
-                  <div>
-                    <label style={s.label}>Prix carburant (€/L)</label>
-                    <input type="number" min="0" step="0.01" style={s.inp()} value={tr.retourFuelPrice||""} onChange={e => updTr({ retourFuelPrice: e.target.value })} placeholder="1.85" />
-                  </div>
-                  <div>
-                    <label style={s.label}>Péages (€)</label>
+                    <label style={s.label}>Péages retour (€)</label>
                     <input type="number" min="0" step="0.01" style={s.inp()} value={tr.retourTolls||""} onChange={e => updTr({ retourTolls: e.target.value })} placeholder="0" />
                   </div>
                 </div>
-                {retourFuelCost > 0 && (
-                  <div style={{ background: `${C.info}12`, border: `1px solid ${C.info}30`, borderRadius: "8px", padding: "10px 14px", marginBottom: "14px", display: "flex", gap: "8px", fontSize: "13px" }}>
-                    <span style={{ color: C.info }}>⛽</span>
-                    <span>Retour — Carburant : <strong style={{ color: C.info }}>{retourFuelCost.toFixed(2)} €</strong> ({rkm} km × {rconso} L/100 × {rprixL} €/L{vehicles.length > 1 ? ` × ${vehicles.length} véhicules` : ""})</span>
-                  </div>
-                )}
               </div>
 
               {/* Location de véhicule */}
