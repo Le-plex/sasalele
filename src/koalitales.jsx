@@ -4164,6 +4164,52 @@ footer{border-top:1px solid #eee;padding-top:12px;color:#aaa;font-size:11px;marg
     ${p.client?.email   ? `Email : ${p.client.email}<br>` : ""}
     ${p.client?.phone   ? `Tél : ${p.client.phone}` : ""}`;
 
+  const printListeMateriel = () => {
+    const dateStr = (() => {
+      const d1 = p.dateStart || p.date;
+      const d2 = p.dateEnd;
+      if (!d1) return "";
+      const fmtD = d => new Date(d).toLocaleDateString("fr-FR");
+      if (!d2 || d2 === d1) return `le ${fmtD(d1)}${p.timeStart ? ` à ${p.timeStart}` : ""}${p.timeEnd ? ` jusqu'à ${p.timeEnd}` : ""}`;
+      return `du ${fmtD(d1)}${p.timeStart ? ` à ${p.timeStart}` : ""} au ${fmtD(d2)}${p.timeEnd ? ` à ${p.timeEnd}` : ""}`;
+    })();
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Liste matériel — ${p.label}</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;padding:48px;font-size:13px;color:#1a1a1a}
+.top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px}
+.title{font-size:22px;font-weight:800;letter-spacing:-0.5px}
+.sub{color:#888;font-size:12px;margin-top:4px}
+table{width:100%;border-collapse:collapse;margin-bottom:24px}
+th{padding:9px 10px;background:#111;color:#fff;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+td{padding:10px;border-bottom:1px solid #f0f0f0}
+.check{width:32px;text-align:center;font-size:16px}
+.cat{color:#888;font-size:11px}
+footer{border-top:1px solid #eee;padding-top:12px;color:#aaa;font-size:11px;margin-top:32px;display:flex;justify-content:space-between}
+@media print{body{padding:24px}}</style></head><body>
+<div class="top">
+  <div>${data.assoc.logo ? `<img src="${data.assoc.logo}" style="height:45px;display:block;margin-bottom:8px">` : ""}
+    <strong style="font-size:15px">${data.assoc.name||"Association"}</strong><br>
+    <span style="color:#888;font-size:12px">${data.assoc.address||""}</span>
+  </div>
+  <div style="text-align:right">
+    <div class="title">LISTE MATÉRIEL</div>
+    <div class="sub">${p.label}</div>
+    ${dateStr ? `<div class="sub">${dateStr}</div>` : ""}
+    ${p.location ? `<div class="sub">Lieu : ${p.location}</div>` : ""}
+  </div>
+</div>
+${p.client?.name ? `<div style="background:#f5f5f5;border-radius:8px;padding:12px;margin-bottom:20px;font-size:12px"><span style="color:#999;text-transform:uppercase;font-size:10px;letter-spacing:.5px">Client</span><br><strong>${p.client.name}</strong>${p.client.phone ? ` — ${p.client.phone}` : ""}</div>` : ""}
+${(p.gear||[]).length > 0 ? `<table><thead><tr><th>Matériel</th><th style="text-align:center">Qté</th><th>Jours</th><th class="check">Départ</th><th class="check">Retour</th></tr></thead><tbody>
+${(p.gear||[]).map(g => `<tr><td>${g.itemName}</td><td style="text-align:center">${g.qty}</td><td class="cat">${g.days}j</td><td class="check">☐</td><td class="check">☐</td></tr>`).join("")}
+</tbody></table>` : `<p style="color:#888;font-style:italic;margin-bottom:20px">Aucun matériel renseigné.</p>`}
+${(p.services||[]).length > 0 ? `<table><thead><tr><th>Services</th><th style="text-align:center">Qté</th></tr></thead><tbody>
+${(p.services||[]).map(sv => `<tr><td>${sv.label}</td><td style="text-align:center">${sv.qty}</td></tr>`).join("")}
+</tbody></table>` : ""}
+${(p.team||[]).length > 0 ? `<p style="font-size:12px;color:#555;margin-bottom:6px"><strong>Équipe :</strong> ${p.team.map(m => `${m.name}${m.role ? ` (${m.role})` : ""}`).join(", ")}</p>` : ""}
+<footer><span>${data.assoc.name||"Association"}</span><span>Généré le ${new Date().toLocaleDateString("fr-FR")}</span></footer>
+</body></html>`;
+    const w = window.open("", "_blank"); w.document.write(html); w.document.close(); w.onload = () => w.print();
+  };
+
   const generateDoc = (type) => {
     const gearLines = (p.gear||[]).map(g => ({ label: `${g.itemName} × ${g.days}j`, qty: g.qty, unitPrice: g.unitPrice, unit: g.priceType }));
     const svcLines  = (p.services||[]).map(sv => ({ label: sv.label, qty: sv.qty, unitPrice: sv.unitPrice, unit: sv.unit }));
@@ -5431,6 +5477,7 @@ ${vehicles.length > 0 ? `<div class="section-title">Répartition des équipes</d
       {tab === "docs" && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "16px" }}>
           {[
+            { title: "Liste matériel", desc: "Fiche de chargement/déchargement avec cases à cocher départ et retour pour chaque article.", btn: "Générer la liste PDF", action: printListeMateriel, color: C.muted },
             { title: "Devis", desc: "Document commercial présentant les prestations et le montant HT. Valable 30 jours.", btn: "Générer le devis PDF", action: () => generateDoc("devis"), color: C.info },
             { title: "Facture", desc: "Facture officielle à émettre après réalisation de la prestation.", btn: "Générer la facture PDF", action: () => generateDoc("facture"), color: C.accent },
             { title: "Contrat de prestation", desc: "Contrat juridique complet (13 articles) : objet, prix, obligations, annulation, responsabilité, force majeure, loi applicable, signatures.", btn: "Générer le contrat PDF", action: generateContract, color: C.warn },
