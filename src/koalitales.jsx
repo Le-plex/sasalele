@@ -2900,14 +2900,14 @@ function LocationDetail({ loc, locations, inventory, catalog, assoc, update, cal
             {/* Total transport */}
             {trTotal > 0 && (
               <div style={{ borderTop: `1px solid ${C.border}`, marginTop: "12px", paddingTop: "12px" }}>
-                {(fuelCost + tolls) > 0 && (retourFuelCost + retourTolls) > 0 && (
+                {(fuelCost + (parseFloat(tr.tolls)||0)) > 0 && (retourFuelCost + (parseFloat(tr.retourTolls)||0)) > 0 && (
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", color: C.muted, marginBottom: "4px" }}>
-                    <span>Aller</span><span style={{ fontFamily: C.mono }}>{(fuelCost + tolls).toFixed(2)} €</span>
+                    <span>Aller</span><span style={{ fontFamily: C.mono }}>{(fuelCost + (parseFloat(tr.tolls)||0)).toFixed(2)} €</span>
                   </div>
                 )}
-                {(retourFuelCost + retourTolls) > 0 && (
+                {(retourFuelCost + (parseFloat(tr.retourTolls)||0)) > 0 && (
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", color: C.muted, marginBottom: "4px" }}>
-                    <span>Retour</span><span style={{ fontFamily: C.mono }}>{(retourFuelCost + retourTolls).toFixed(2)} €</span>
+                    <span>Retour</span><span style={{ fontFamily: C.mono }}>{(retourFuelCost + (parseFloat(tr.retourTolls)||0)).toFixed(2)} €</span>
                   </div>
                 )}
                 {rentalCost > 0 && (
@@ -5348,14 +5348,14 @@ ${vehicles.length > 0 ? `<div class="section-title">Répartition des équipes</d
               {/* Total */}
               {transportTotal > 0 && (
                 <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: "12px" }}>
-                  {(fuelCost + tolls) > 0 && (retourFuelCost + retourTolls) > 0 && (
+                  {(fuelCost + (parseFloat(tr.tolls)||0)) > 0 && (retourFuelCost + (parseFloat(tr.retourTolls)||0)) > 0 && (
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", color: C.muted, marginBottom: "4px" }}>
-                      <span>Aller</span><span style={{ fontFamily: "'DM Mono', monospace" }}>{(fuelCost + tolls).toFixed(2)} €</span>
+                      <span>Aller</span><span style={{ fontFamily: "'DM Mono', monospace" }}>{(fuelCost + (parseFloat(tr.tolls)||0)).toFixed(2)} €</span>
                     </div>
                   )}
-                  {(retourFuelCost + retourTolls) > 0 && (
+                  {(retourFuelCost + (parseFloat(tr.retourTolls)||0)) > 0 && (
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", color: C.muted, marginBottom: "4px" }}>
-                      <span>Retour</span><span style={{ fontFamily: "'DM Mono', monospace" }}>{(retourFuelCost + retourTolls).toFixed(2)} €</span>
+                      <span>Retour</span><span style={{ fontFamily: "'DM Mono', monospace" }}>{(retourFuelCost + (parseFloat(tr.retourTolls)||0)).toFixed(2)} €</span>
                     </div>
                   )}
                   {rentalCost > 0 && (
