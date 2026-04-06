@@ -42,8 +42,26 @@ const PERMISSION_LABELS = {
   web_admin:          "Administration web (maintenance)",
 };
 
+const DEFAULT_MODULES = { invoices: true, inventory: true, meetings: true, prestations: false, locations: false, contacts: true, depenses: true, compta: true, todos: true };
+const DEFAULT_CONTRACT_TERMS = { acompte: 30, penaliteTaux: 5, penaliteIndemnite: 40, delaiAmiable: 30, forceMajeureDelai: 15, annulationJ30: "remboursement de l'acompte sous déduction des frais engagés", annulationJ15: "retenue de 50 % du montant total", annulationJ8: "retenue de 75 % du montant total", annulationJ0: "facturation de la totalité du montant" };
+const COLOR_PRESETS = [
+  { label: "Violet", color: "#9d6fe8" }, { label: "Bleu", color: "#4db8ff" },
+  { label: "Émeraude", color: "#4affa0" }, { label: "Rose", color: "#ff4dda" },
+  { label: "Orange", color: "#ffb84d" }, { label: "Rouge", color: "#ff4d72" },
+];
+const MODULE_OPTS = [
+  { key: "invoices",    label: "Factures",     desc: "Créer et envoyer des factures clients" },
+  { key: "inventory",   label: "Inventaire",   desc: "Suivi du matériel et équipements" },
+  { key: "meetings",    label: "Réunions",     desc: "Comptes-rendus et ordres du jour" },
+  { key: "prestations", label: "Prestations",  desc: "Contrats de prestation de services" },
+  { key: "locations",   label: "Locations",    desc: "Location de matériel avec contrats" },
+  { key: "contacts",    label: "Contacts",     desc: "Annuaire clients et partenaires" },
+  { key: "depenses",    label: "Dépenses",     desc: "Suivi des dépenses et remboursements" },
+  { key: "compta",      label: "Comptabilité", desc: "Bilan financier et trésorerie" },
+  { key: "todos",       label: "Tâches",       desc: "Liste de tâches partagées" },
+];
 const INIT = {
-  assoc: { name: "", logo: null, address: "", email: "", phone: "", iban: "", siret: "", note: "", bankBalance: 0, bankThreshold: 0 },
+  assoc: { name: "", logo: null, address: "", email: "", phone: "", iban: "", siret: "", note: "", bankBalance: 0, bankThreshold: 0, accentColor: null, modules: null, contractTerms: null },
   events: [], catalog: [], invoices: [], inventory: [], meetings: [], prestations: [], locations: [],
   depenses: [], roles: [], depensesPool: [], contacts: [], tickets: [], todos: [],
 };
@@ -368,6 +386,9 @@ export default function App() {
     store.loadUsers().then(u => setUsers(u || []));
   };
 
+  // Appliquer la couleur d'accent personnalisée
+  if (data?.assoc?.accentColor) C.accent = data.assoc.accentColor;
+
   if (!authReady) return <Loader />;
   if (authMode === "setup") return <SetupPage onDone={() => setAuthMode("login")} />;
   if (authMode === "login") return <LoginPage onLogin={handleLogin} />;
@@ -442,44 +463,257 @@ function Loader() {
 
 // ── SETUP PAGE ────────────────────────────────────────────────────────────────
 function SetupPage({ onDone }) {
-  const [form, setForm] = useState({ username: "", password: "", confirm: "" });
+  const [stepIndex, setStepIndex] = useState(0);
+  const [assocForm, setAssocForm] = useState({ name: "", address: "", email: "", phone: "", siret: "", iban: "" });
+  const [modules, setModules] = useState(DEFAULT_MODULES);
+  const [accent, setAccent] = useState(C.accent);
+  const [ct, setCt] = useState(DEFAULT_CONTRACT_TERMS);
+  const [adminForm, setAdminForm] = useState({ username: "", password: "", confirm: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const submit = async () => {
+  const allStepIds = ["Association", "Modules", "Apparence", "Contrats", "Compte admin"];
+  const steps = allStepIds.filter(id => id !== "Contrats" || modules.locations || modules.prestations);
+  const stepId = steps[stepIndex];
+  const isLast = stepIndex === steps.length - 1;
+
+  const next = () => {
     setError("");
-    if (!form.username.trim()) return setError("L'identifiant est requis.");
-    if (form.password.length < 6) return setError("Le mot de passe doit contenir au moins 6 caractères.");
-    if (form.password !== form.confirm) return setError("Les mots de passe ne correspondent pas.");
+    if (stepId === "Association" && !assocForm.name.trim()) return setError("Le nom de l'association est requis.");
+    if (stepId === "Compte admin") return submit();
+    setStepIndex(i => i + 1);
+  };
+  const prev = () => { setError(""); setStepIndex(i => i - 1); };
+
+  const submit = async () => {
+    if (!adminForm.username.trim()) return setError("L'identifiant est requis.");
+    if (adminForm.password.length < 6) return setError("Le mot de passe doit contenir au moins 6 caractères.");
+    if (adminForm.password !== adminForm.confirm) return setError("Les mots de passe ne correspondent pas.");
     setLoading(true);
-    const res = await auth.setup({ username: form.username, password: form.password });
+    const initData = { ...INIT, assoc: { ...INIT.assoc, ...assocForm, accentColor: accent, modules, contractTerms: ct } };
+    await store.save(initData);
+    const res = await auth.setup({ username: adminForm.username, password: adminForm.password });
     setLoading(false);
     if (res.ok) onDone();
     else setError(res.error || "Erreur lors de la création.");
   };
 
-  return (
-    <div style={{ background: C.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: C.font }}>
-      <div style={{ width: "400px", padding: "0 16px" }}>
-        <div style={{ textAlign: "center", marginBottom: "36px" }}>
-          <div style={{ fontFamily: C.display, fontSize: "28px", fontWeight: "800", color: C.accent, marginBottom: "4px" }}>SASALELE</div>
-          <div style={{ fontFamily: C.font, fontSize: "12px", color: C.muted, marginBottom: "8px", letterSpacing: "0.5px" }}>Pour Koalisons</div>
-          <div style={{ color: C.muted, fontSize: "14px" }}>Première configuration — Créez le compte administrateur</div>
+  const toggleModule = (key) => setModules(m => ({ ...m, [key]: !m[key] }));
+
+  const renderStep = () => {
+    if (stepId === "Association") return (
+      <div>
+        {[
+          { k:"name", l:"Nom de l'association *", ph:"Les Artisans du Son", type:"text" },
+          { k:"address", l:"Adresse", ph:"12 rue des Arts, 75001 Paris", type:"text" },
+          { k:"email", l:"Email de contact", ph:"contact@asso.fr", type:"email" },
+          { k:"phone", l:"Téléphone", ph:"+33 6 xx xx xx xx", type:"tel" },
+          { k:"siret", l:"SIRET", ph:"XXX XXX XXX XXXXX", type:"text" },
+          { k:"iban", l:"IBAN", ph:"FR76 XXXX…", type:"text" },
+        ].map(({ k,l,ph,type }) => (
+          <div key={k} style={{ marginBottom: "12px" }}>
+            <label style={s.label}>{l}</label>
+            <input type={type} style={s.inp()} value={assocForm[k]||""} placeholder={ph}
+              onChange={e => setAssocForm({ ...assocForm, [k]: e.target.value })}
+              onKeyDown={e => e.key === "Enter" && next()} />
+          </div>
+        ))}
+        <div style={{ background: `${accent}12`, border: `1px solid ${accent}30`, borderRadius: "8px", padding: "10px 14px", fontSize: "12px", color: C.muted, marginTop: "6px" }}>
+          Ces informations apparaîtront sur vos factures et contrats. Modifiables à tout moment dans Paramètres.
         </div>
-        <div style={s.card()}>
-          <div style={{ fontFamily: C.display, fontWeight: "700", fontSize: "15px", marginBottom: "20px" }}>Compte administrateur (root)</div>
-          {[{ k:"username",l:"Identifiant",ph:"admin",type:"text" },{ k:"password",l:"Mot de passe",ph:"••••••••",type:"password" },{ k:"confirm",l:"Confirmer",ph:"••••••••",type:"password" }].map(({ k,l,ph,type }) => (
-            <div key={k} style={{ marginBottom: "14px" }}>
-              <label style={s.label}>{l}</label>
-              <input type={type} style={s.inp()} value={form[k]} placeholder={ph}
-                onChange={e => setForm({ ...form, [k]: e.target.value })}
-                onKeyDown={e => e.key === "Enter" && submit()} />
+      </div>
+    );
+
+    if (stepId === "Modules") return (
+      <div>
+        <p style={{ color: C.muted, fontSize: "13px", marginBottom: "16px" }}>
+          Activez les fonctionnalités dont vous avez besoin. Tout peut être modifié plus tard.
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          {MODULE_OPTS.map(({ key, label, desc }) => (
+            <div key={key} onClick={() => toggleModule(key)} style={{
+              display: "flex", alignItems: "center", gap: "14px", padding: "11px 14px", borderRadius: "8px",
+              border: `1px solid ${modules[key] ? accent+"60" : C.border}`,
+              background: modules[key] ? `${accent}10` : C.card2, cursor: "pointer", transition: "all 0.15s",
+            }}>
+              <div style={{
+                width: "20px", height: "20px", borderRadius: "5px", flexShrink: 0,
+                border: `2px solid ${modules[key] ? accent : C.border}`,
+                background: modules[key] ? accent : "transparent",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: "11px", fontWeight: "700", color: "#000",
+              }}>{modules[key] ? "✓" : ""}</div>
+              <div>
+                <div style={{ fontSize: "13px", fontWeight: "500", color: modules[key] ? C.text : C.muted }}>{label}</div>
+                <div style={{ fontSize: "11px", color: C.muted, marginTop: "1px" }}>{desc}</div>
+              </div>
             </div>
           ))}
-          {error && <div style={{ color: C.danger, fontSize: "12px", marginBottom: "12px" }}>{error}</div>}
-          <button style={s.btn("primary", { width: "100%", padding: "12px" })} onClick={submit} disabled={loading}>
-            {loading ? "Création…" : "Créer le compte administrateur"}
-          </button>
+        </div>
+      </div>
+    );
+
+    if (stepId === "Apparence") return (
+      <div>
+        <p style={{ color: C.muted, fontSize: "13px", marginBottom: "16px" }}>Choisissez la couleur principale de l'interface.</p>
+        <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "20px" }}>
+          {COLOR_PRESETS.map(({ label, color }) => (
+            <div key={color} onClick={() => setAccent(color)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "5px", cursor: "pointer" }}>
+              <div style={{
+                width: "44px", height: "44px", borderRadius: "50%", background: color, transition: "all 0.15s",
+                border: `3px solid ${accent === color ? "#fff" : "transparent"}`,
+                boxShadow: accent === color ? `0 0 0 2px ${color}` : "none",
+              }} />
+              <div style={{ fontSize: "10px", color: accent === color ? C.text : C.muted }}>{label}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ marginBottom: "18px" }}>
+          <label style={s.label}>Couleur personnalisée</label>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <input type="color" value={accent} onChange={e => setAccent(e.target.value)}
+              style={{ width: "44px", height: "36px", borderRadius: "8px", border: `1px solid ${C.border}`, background: C.card2, cursor: "pointer", padding: "2px" }} />
+            <input type="text" style={s.inp()} value={accent} placeholder="#9d6fe8"
+              onChange={e => { if (/^#[0-9a-fA-F]{0,6}$/.test(e.target.value)) setAccent(e.target.value); }} />
+          </div>
+        </div>
+        <div style={{ borderRadius: "10px", padding: "16px", background: `${accent}15`, border: `1px solid ${accent}40` }}>
+          <div style={{ fontSize: "10px", color: C.muted, marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Aperçu</div>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+            <span style={{ fontFamily: C.display, fontSize: "18px", fontWeight: "800", color: accent }}>SASALELE</span>
+            <span style={{ fontSize: "11px", color: accent + "aa" }}>{assocForm.name ? `Pour ${assocForm.name}` : "Pour votre association"}</span>
+          </div>
+          <div style={{ marginTop: "10px", display: "flex", gap: "8px" }}>
+            <button style={{ ...s.btn("primary"), background: accent }} onClick={e => e.preventDefault()}>Bouton principal</button>
+            <span style={{ color: accent, fontSize: "13px", alignSelf: "center" }}>✓ Élément actif</span>
+          </div>
+        </div>
+      </div>
+    );
+
+    if (stepId === "Contrats") return (
+      <div>
+        <p style={{ color: C.muted, fontSize: "13px", marginBottom: "16px" }}>
+          Termes appliqués à vos contrats de location et prestation. Modifiables à tout moment.
+        </p>
+        <div style={{ marginBottom: "14px" }}>
+          <label style={s.label}>Acompte à la signature (%)</label>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            {[20, 25, 30, 40, 50].map(v => (
+              <button key={v} onClick={() => setCt(c => ({ ...c, acompte: v }))}
+                style={s.btn(ct.acompte === v ? "primary" : "ghost", { padding: "6px 14px", fontSize: "12px" })}>{v}%</button>
+            ))}
+            <input type="number" style={s.inp({ width: "70px" })} value={ct.acompte} min="0" max="100"
+              onChange={e => setCt(c => ({ ...c, acompte: parseInt(e.target.value)||30 }))} />
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "14px" }}>
+          <div>
+            <label style={s.label}>Pénalités retard (pts au-dessus du taux légal)</label>
+            <input type="number" style={s.inp()} value={ct.penaliteTaux} min="0" step="0.5"
+              onChange={e => setCt(c => ({ ...c, penaliteTaux: parseFloat(e.target.value)||5 }))} />
+          </div>
+          <div>
+            <label style={s.label}>Indemnité recouvrement (€)</label>
+            <input type="number" style={s.inp()} value={ct.penaliteIndemnite} min="0"
+              onChange={e => setCt(c => ({ ...c, penaliteIndemnite: parseFloat(e.target.value)||40 }))} />
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "14px" }}>
+          <div>
+            <label style={s.label}>Délai résolution amiable (jours)</label>
+            <input type="number" style={s.inp()} value={ct.delaiAmiable} min="1"
+              onChange={e => setCt(c => ({ ...c, delaiAmiable: parseInt(e.target.value)||30 }))} />
+          </div>
+          <div>
+            <label style={s.label}>Délai force majeure avant résiliation (jours)</label>
+            <input type="number" style={s.inp()} value={ct.forceMajeureDelai} min="1"
+              onChange={e => setCt(c => ({ ...c, forceMajeureDelai: parseInt(e.target.value)||15 }))} />
+          </div>
+        </div>
+        <div style={{ fontFamily: C.display, fontWeight: "700", fontSize: "13px", marginBottom: "10px", marginTop: "4px" }}>Politique d'annulation</div>
+        {[
+          { key: "annulationJ30", label: "> 30 jours avant la date" },
+          { key: "annulationJ15", label: "15–30 jours avant" },
+          { key: "annulationJ8",  label: "8–14 jours avant" },
+          { key: "annulationJ0",  label: "< 8 jours / le jour même" },
+        ].map(({ key, label }) => (
+          <div key={key} style={{ marginBottom: "10px" }}>
+            <label style={s.label}>{label}</label>
+            <input type="text" style={s.inp()} value={ct[key]}
+              onChange={e => setCt(c => ({ ...c, [key]: e.target.value }))} />
+          </div>
+        ))}
+      </div>
+    );
+
+    if (stepId === "Compte admin") return (
+      <div>
+        <p style={{ color: C.muted, fontSize: "13px", marginBottom: "16px" }}>
+          Ce compte aura tous les droits (rôle root). Vous pourrez créer d'autres utilisateurs ensuite par code d'invitation.
+        </p>
+        {[
+          { k:"username", l:"Identifiant", ph:"admin", type:"text" },
+          { k:"password", l:"Mot de passe (6 caractères min.)", ph:"••••••••", type:"password" },
+          { k:"confirm",  l:"Confirmer le mot de passe", ph:"••••••••", type:"password" },
+        ].map(({ k,l,ph,type }) => (
+          <div key={k} style={{ marginBottom: "14px" }}>
+            <label style={s.label}>{l}</label>
+            <input type={type} style={s.inp()} value={adminForm[k]} placeholder={ph}
+              onChange={e => setAdminForm({ ...adminForm, [k]: e.target.value })}
+              onKeyDown={e => e.key === "Enter" && isLast && next()} />
+          </div>
+        ))}
+        <div style={{ background: `${accent}12`, border: `1px solid ${accent}30`, borderRadius: "8px", padding: "10px 14px", fontSize: "12px", color: C.muted }}>
+          Récap : <strong style={{ color: C.text }}>{assocForm.name}</strong> · {Object.values(modules).filter(Boolean).length} module{Object.values(modules).filter(Boolean).length > 1 ? "s" : ""} actif{Object.values(modules).filter(Boolean).length > 1 ? "s" : ""}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ background: C.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: C.font, padding: "40px 16px" }}>
+      <div style={{ width: "540px", maxWidth: "100%" }}>
+        <div style={{ textAlign: "center", marginBottom: "28px" }}>
+          <div style={{ fontFamily: C.display, fontSize: "28px", fontWeight: "800", color: accent, marginBottom: "4px" }}>SASALELE</div>
+          <div style={{ fontSize: "12px", color: C.muted, letterSpacing: "0.5px" }}>
+            {assocForm.name ? `Pour ${assocForm.name}` : "Configuration initiale"}
+          </div>
+        </div>
+
+        {/* Indicateur d'étapes */}
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "center", gap: "0", marginBottom: "28px" }}>
+          {steps.map((id, i) => (
+            <div key={id} style={{ display: "flex", alignItems: "center" }}>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
+                <div style={{
+                  width: "30px", height: "30px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: "11px", fontWeight: "700", transition: "all 0.2s",
+                  background: i < stepIndex ? accent : i === stepIndex ? accent : C.card2,
+                  border: `2px solid ${i <= stepIndex ? accent : C.border}`,
+                  color: i <= stepIndex ? "#000" : C.muted,
+                }}>{i < stepIndex ? "✓" : i + 1}</div>
+                <div style={{ fontSize: "10px", color: i === stepIndex ? accent : C.muted, fontWeight: i === stepIndex ? "600" : "400", whiteSpace: "nowrap" }}>{id}</div>
+              </div>
+              {i < steps.length - 1 && (
+                <div style={{ width: "32px", height: "2px", background: i < stepIndex ? accent : C.border, marginTop: "-14px", transition: "all 0.2s" }} />
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div style={s.card()}>
+          <div style={{ fontFamily: C.display, fontWeight: "700", fontSize: "16px", marginBottom: "20px", color: C.text }}>{stepId}</div>
+          {renderStep()}
+          {error && <div style={{ color: C.danger, fontSize: "12px", marginTop: "10px" }}>{error}</div>}
+          <div style={{ display: "flex", gap: "10px", marginTop: "22px" }}>
+            {stepIndex > 0 && (
+              <button style={s.btn("ghost", { flex: 1 })} onClick={prev}>← Précédent</button>
+            )}
+            <button style={{ ...s.btn("primary", { flex: 1, padding: "12px" }), background: accent }} onClick={next} disabled={loading}>
+              {loading ? "Création…" : isLast ? "Créer et démarrer →" : "Suivant →"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -493,6 +727,10 @@ function LoginPage({ onLogin }) {
   const [regForm, setRegForm] = useState({ code: "", username: "", password: "", confirm: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [assocName, setAssocName] = useState("");
+  useEffect(() => {
+    store.load().then(d => { if (d?.assoc?.name) setAssocName(d.assoc.name); if (d?.assoc?.accentColor) C.accent = d.assoc.accentColor; });
+  }, []);
 
   const submit = async () => {
     setError("");
@@ -529,7 +767,7 @@ function LoginPage({ onLogin }) {
       <div style={{ width: "380px", padding: "0 16px" }}>
         <div style={{ textAlign: "center", marginBottom: "36px" }}>
           <div style={{ fontFamily: C.display, fontSize: "28px", fontWeight: "800", color: C.accent, marginBottom: "4px" }}>SASALELE</div>
-          <div style={{ fontFamily: C.font, fontSize: "12px", color: C.muted, marginBottom: "8px", letterSpacing: "0.5px" }}>Pour Koalisons</div>
+          <div style={{ fontFamily: C.font, fontSize: "12px", color: C.muted, marginBottom: "8px", letterSpacing: "0.5px" }}>{assocName ? `Pour ${assocName}` : "Sasalele"}</div>
           <div style={{ color: C.muted, fontSize: "14px" }}>{mode === "login" ? "Connectez-vous pour continuer" : "Créer un compte avec un code d'invitation"}</div>
         </div>
 
@@ -717,24 +955,26 @@ function Nav({ page, go, session, onLogout, can, isMobile, onAvatarChange, users
     return { netM: Math.round(netM * 100) / 100, netB: Math.round(netB * 100) / 100 };
   }, [myName, data]);
 
+  const mods = data.assoc?.modules; // null = tous actifs (rétrocompat)
+  const modOn = (key) => !mods || mods[key] !== false;
   const items = [
     { id: "dashboard",   icon: "⬡", label: "Tableau de bord",  always: true },
     { id: "equipe",      icon: "◉", label: "Équipe",            always: true },
     { id: "events",      icon: "◆", label: "Événements",        always: true },
-    { id: "invoices",    icon: "◉", label: "Factures",          perm: "invoices" },
-    { id: "inventory",   icon: "▣", label: "Inventaire",        perm: "manage_inventory" },
-    { id: "meetings",    icon: "◈", label: "Réunions",          perm: "manage_meetings" },
-    { id: "prestations", icon: "◎", label: "Prestations",       perm: "manage_prestations" },
-    { id: "locations",   icon: "◧", label: "Locations",          perm: "manage_prestations" },
-    { id: "contacts",    icon: "◉", label: "Contacts",           always: true },
-    { id: "depenses",    icon: "€", label: "Dépenses",          always: true },
-    { id: "compta",      icon: "⊞", label: "Comptabilité",      always: true },
-    { id: "todos",        icon: "☑", label: "Tâches",             always: true },
-    { id: "tickets",     icon: "◎", label: "Suggestions",        always: true },
-    { id: "settings",   icon: "⚙", label: "Association",       perm: "settings" },
+    { id: "invoices",    icon: "◉", label: "Factures",          perm: "invoices",           mod: "invoices" },
+    { id: "inventory",   icon: "▣", label: "Inventaire",        perm: "manage_inventory",   mod: "inventory" },
+    { id: "meetings",    icon: "◈", label: "Réunions",          perm: "manage_meetings",    mod: "meetings" },
+    { id: "prestations", icon: "◎", label: "Prestations",       perm: "manage_prestations", mod: "prestations" },
+    { id: "locations",   icon: "◧", label: "Locations",         perm: "manage_prestations", mod: "locations" },
+    { id: "contacts",    icon: "◉", label: "Contacts",          always: true,               mod: "contacts" },
+    { id: "depenses",    icon: "€", label: "Dépenses",          always: true,               mod: "depenses" },
+    { id: "compta",      icon: "⊞", label: "Comptabilité",      always: true,               mod: "compta" },
+    { id: "todos",       icon: "☑", label: "Tâches",            always: true,               mod: "todos" },
+    { id: "tickets",     icon: "◎", label: "Suggestions",       always: true },
+    { id: "settings",    icon: "⚙", label: "Association",       perm: "settings" },
     { id: "users",       icon: "◈", label: "Utilisateurs",      perm: "manage_users" },
     { id: "maintenance", icon: "⚙", label: "Maintenance",       perm: "web_admin" },
-  ].filter(item => item.always || can(item.perm));
+  ].filter(item => (item.always || can(item.perm)) && (!item.mod || modOn(item.mod)));
 
   const isActive = (id) => page === id || (id === "events" && page === "eventDetail");
 
@@ -745,7 +985,7 @@ function Nav({ page, go, session, onLogout, can, isMobile, onAvatarChange, users
       <div style={{ padding: "22px 24px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
           <div style={{ fontFamily: C.display, fontSize: "17px", fontWeight: "800", color: C.accent, letterSpacing: "-0.3px" }}>SASALELE</div>
-          <div style={{ fontFamily: C.font, fontSize: "11px", color: C.muted, marginTop: "2px", letterSpacing: "0.3px" }}>Pour Koalisons</div>
+          <div style={{ fontFamily: C.font, fontSize: "11px", color: C.muted, marginTop: "2px", letterSpacing: "0.3px" }}>{data.assoc?.name ? `Pour ${data.assoc.name}` : "Sasalele"}</div>
         </div>
         {isMobile && <button onClick={() => setOpen(false)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: "20px" }}>✕</button>}
       </div>
@@ -858,7 +1098,7 @@ function Nav({ page, go, session, onLogout, can, isMobile, onAvatarChange, users
         <button onClick={() => setOpen(true)} style={{ background: "none", border: "none", color: C.text, cursor: "pointer", fontSize: "22px", lineHeight: 1 }}>☰</button>
         <div>
           <span style={{ fontFamily: C.display, fontSize: "16px", fontWeight: "800", color: C.accent }}>SASALELE</span>
-          <span style={{ fontFamily: C.font, fontSize: "10px", color: C.muted, marginLeft: "8px" }}>Pour Koalisons</span>
+          <span style={{ fontFamily: C.font, fontSize: "10px", color: C.muted, marginLeft: "8px" }}>{data.assoc?.name ? `Pour ${data.assoc.name}` : "Sasalele"}</span>
         </div>
       </div>
       <div style={{ height: "54px" }} />
@@ -2859,6 +3099,8 @@ ${loc.notes?`<div style="padding:12px;background:#f8f8f8;border-radius:8px;font-
     const days = calcDays(loc.dateStart, loc.dateEnd);
     const effectiveTotal = loc.customPrice != null ? loc.customPrice : locTotal(loc);
     const today_str = new Date().toLocaleDateString("fr-FR");
+    const ct = assoc.contractTerms || DEFAULT_CONTRACT_TERMS;
+    const pctAcompte = ct.acompte || 30;
     const hasSvc = (loc.services||[]).length > 0;
     let art = 1;
     const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Contrat de location ${loc.number}</title>
@@ -2928,7 +3170,7 @@ ${hasSvc?`<div class="art">
 <div class="art">
   <div class="art-title">Article ${hasSvc?4:3} – Conditions financières</div>
   <p>Le montant total de la location s'élève à <strong>${fmt(effectiveTotal)} TTC</strong> (TVA non applicable – art. 293B CGI).</p>
-  <p>Un acompte de <strong>30 %</strong> (soit ${fmt(effectiveTotal*0.3)}) est exigible à la signature du présent contrat. Le solde de <strong>${fmt(effectiveTotal*0.7)}</strong> est dû au plus tard le jour de la prise en charge du matériel. Tout retard de paiement entraîne de plein droit des pénalités au taux légal majoré de 5 points et une indemnité forfaitaire de 40 € pour frais de recouvrement.</p>
+  <p>Un acompte de <strong>${pctAcompte} %</strong> (soit ${fmt(effectiveTotal*pctAcompte/100)}) est exigible à la signature du présent contrat. Le solde de <strong>${fmt(effectiveTotal*(1-pctAcompte/100))}</strong> est dû au plus tard le jour de la prise en charge du matériel. Tout retard de paiement entraîne de plein droit des pénalités au taux légal majoré de ${ct.penaliteTaux||5} points et une indemnité forfaitaire de ${ct.penaliteIndemnite||40} € pour frais de recouvrement.</p>
   ${assoc.iban?`<p>Règlement par virement bancaire (IBAN : ${assoc.iban}), chèque ou espèces.</p>`:""}
 </div>
 
@@ -2988,16 +3230,16 @@ ${hasSvc?`<div class="art">
   <div class="art-title">Article ${hasSvc?10:9} – Annulation</div>
   <p>Toute annulation doit être notifiée par écrit (courriel avec accusé de réception ou lettre recommandée AR). Les conditions suivantes s'appliquent :</p>
   <ul>
-    <li>Annulation plus de 30 jours avant la prise en charge : remboursement de l'acompte sous déduction des frais engagés ;</li>
-    <li>Annulation entre 15 et 30 jours : retenue de 50 % du montant total ;</li>
-    <li>Annulation entre 8 et 14 jours : retenue de 75 % du montant total ;</li>
-    <li>Annulation moins de 8 jours ou le jour même : facturation de la totalité du montant.</li>
+    <li>Annulation plus de 30 jours avant la prise en charge : ${ct.annulationJ30||DEFAULT_CONTRACT_TERMS.annulationJ30} ;</li>
+    <li>Annulation entre 15 et 30 jours : ${ct.annulationJ15||DEFAULT_CONTRACT_TERMS.annulationJ15} ;</li>
+    <li>Annulation entre 8 et 14 jours : ${ct.annulationJ8||DEFAULT_CONTRACT_TERMS.annulationJ8} ;</li>
+    <li>Annulation moins de 8 jours ou le jour même : ${ct.annulationJ0||DEFAULT_CONTRACT_TERMS.annulationJ0}.</li>
   </ul>
 </div>
 
 <div class="art">
   <div class="art-title">Article ${hasSvc?11:10} – Force majeure</div>
-  <p>Aucune des Parties ne pourra être tenue responsable d'un manquement résultant d'un cas de force majeure au sens de l'article 1218 du Code civil. La Partie empêchée devra notifier l'autre dans les 48 heures. Si la force majeure persiste au-delà de 15 jours, chaque Partie pourra résoudre le contrat sans indemnité, sous réserve du remboursement des sommes versées déduction faite des frais justifiés.</p>
+  <p>Aucune des Parties ne pourra être tenue responsable d'un manquement résultant d'un cas de force majeure au sens de l'article 1218 du Code civil. La Partie empêchée devra notifier l'autre dans les 48 heures. Si la force majeure persiste au-delà de ${ct.forceMajeureDelai||15} jours, chaque Partie pourra résoudre le contrat sans indemnité, sous réserve du remboursement des sommes versées déduction faite des frais justifiés.</p>
 </div>
 
 <div class="art">
@@ -3007,7 +3249,7 @@ ${hasSvc?`<div class="art">
 
 <div class="art">
   <div class="art-title">Article ${hasSvc?13:12} – Loi applicable et litiges</div>
-  <p>Le présent contrat est soumis au droit français. En cas de litige, les Parties recherchent une solution amiable dans un délai de 30 jours. À défaut, compétence exclusive est attribuée aux juridictions du ressort du siège du Loueur.</p>
+  <p>Le présent contrat est soumis au droit français. En cas de litige, les Parties recherchent une solution amiable dans un délai de ${ct.delaiAmiable||30} jours. À défaut, compétence exclusive est attribuée aux juridictions du ressort du siège du Loueur.</p>
 </div>
 
 ${loc.notes?`<div class="art"><div class="art-title">Notes complémentaires</div><p>${loc.notes}</p></div>`:""}
@@ -3959,6 +4201,8 @@ ${data.assoc.iban ? `<p style="font-size:12px;margin-bottom:8px"><strong>Règlem
 
   const generateContract = () => {
     const today_str = new Date().toLocaleDateString("fr-FR");
+    const ct = data.assoc?.contractTerms || DEFAULT_CONTRACT_TERMS;
+    const pctAcompte = ct.acompte || 30;
     const fmtDate = (d) => d ? new Date(d).toLocaleDateString("fr-FR") : null;
     const dateStart = p.dateStart || p.date;
     const dateEnd   = p.dateEnd;
@@ -4035,7 +4279,7 @@ body{font-size:12.5px}.contrat-title{font-size:22px;font-weight:800;letter-spaci
   <p style="color:#888;font-size:11px;margin-bottom:10px">TVA non applicable en vertu de l'article 293B du Code Général des Impôts.</p>
   ${(p.customPrice == null && (gearTotal > 0 || svcTotal > 0 || calcTrTotal > 0)) ? `<p style="margin-bottom:8px">${[gearTotal > 0 ? `Matériel : ${fmt(gearTotal)}` : "", svcTotal > 0 ? `Services : ${fmt(svcTotal)}` : "", calcTrTotal > 0 ? `Transport : ${fmt(calcTrTotal)}` : ""].filter(Boolean).join(" — ")}</p>` : ""}
   <p>Modalités de règlement acceptées : <strong>virement bancaire</strong>${data.assoc.iban ? ` (IBAN : ${data.assoc.iban})` : ""}, chèque libellé à l'ordre de ${data.assoc.name||"l'Association"}, ou espèces (dans la limite légale en vigueur).</p>
-  <p style="margin-top:8px">Un acompte non remboursable de <strong>30 %</strong> (soit ${fmt(total * 0.3)}) est exigible à la signature du présent contrat et conditionne sa prise d'effet. Le solde de <strong>${fmt(total * 0.7)}</strong> est dû au plus tard le jour de la prestation, avant le début de l'installation. Tout défaut de paiement à l'échéance entraîne de plein droit l'application d'intérêts de retard au taux légal en vigueur, majoré de 5 points, ainsi qu'une indemnité forfaitaire pour frais de recouvrement de 40 €.</p>
+  <p style="margin-top:8px">Un acompte non remboursable de <strong>${pctAcompte} %</strong> (soit ${fmt(total * pctAcompte/100)}) est exigible à la signature du présent contrat et conditionne sa prise d'effet. Le solde de <strong>${fmt(total * (1-pctAcompte/100))}</strong> est dû au plus tard le jour de la prestation, avant le début de l'installation. Tout défaut de paiement à l'échéance entraîne de plein droit l'application d'intérêts de retard au taux légal en vigueur, majoré de ${ct.penaliteTaux||5} points, ainsi qu'une indemnité forfaitaire pour frais de recouvrement de ${ct.penaliteIndemnite||40} €.</p>
 </div>
 
 <div class="art">
@@ -4081,10 +4325,10 @@ body{font-size:12.5px}.contrat-title{font-size:22px;font-weight:800;letter-spaci
   <p>Toute demande d'annulation ou de modification substantielle doit être adressée par écrit (courriel avec accusé de réception ou lettre recommandée avec AR).</p>
   <p style="margin-top:8px"><strong>Annulation à l'initiative du Client :</strong></p>
   <ul style="margin-left:20px;margin-top:4px">
-    <li>Plus de 30 jours avant la prestation : remboursement de l'acompte sous déduction des frais engagés justifiés ;</li>
-    <li>Entre 15 et 30 jours : retenue de 50 % du montant total TTC ;</li>
-    <li>Entre 8 et 14 jours : retenue de 75 % du montant total TTC ;</li>
-    <li>Moins de 8 jours ou le jour même : facturation de la totalité du montant contractuel.</li>
+    <li>Plus de 30 jours avant la prestation : ${ct.annulationJ30||DEFAULT_CONTRACT_TERMS.annulationJ30} ;</li>
+    <li>Entre 15 et 30 jours : ${ct.annulationJ15||DEFAULT_CONTRACT_TERMS.annulationJ15} ;</li>
+    <li>Entre 8 et 14 jours : ${ct.annulationJ8||DEFAULT_CONTRACT_TERMS.annulationJ8} ;</li>
+    <li>Moins de 8 jours ou le jour même : ${ct.annulationJ0||DEFAULT_CONTRACT_TERMS.annulationJ0}.</li>
   </ul>
   <p style="margin-top:8px"><strong>Modification à l'initiative du Client :</strong> toute modification du programme, de la durée ou de la configuration technique demandée moins de 72 heures avant la prestation sera facturée en sus selon la grille tarifaire en vigueur.</p>
   <p style="margin-top:8px"><strong>Résiliation par le Prestataire :</strong> le Prestataire peut résilier le contrat de plein droit, par notification écrite, en cas de non-paiement de l'acompte dans les 8 jours suivant la signature, ou de manquement grave et non remédié du Client à ses obligations.</p>
@@ -4117,7 +4361,7 @@ body{font-size:12.5px}.contrat-title{font-size:22px;font-weight:800;letter-spaci
 <div class="art">
   <div class="art-title">Article 11 – Force majeure</div>
   <p>Aucune des Parties ne pourra être tenue responsable de l'inexécution de ses obligations contractuelles si celle-ci est due à un cas de force majeure au sens de l'article 1218 du Code civil (catastrophe naturelle, incendie, inondation, épidémie, acte terroriste, décision gouvernementale ou administrative imprévisible, grève générale des transports, etc.).</p>
-  <p style="margin-top:6px">La Partie empêchée devra notifier l'autre Partie dans un délai de <strong>48 heures</strong> par tout moyen écrit. Si la force majeure persiste au-delà de 15 jours, chaque Partie pourra résoudre le contrat par notification écrite, sans indemnité, sous réserve du remboursement des sommes déjà versées déduction faite des frais engagés et dûment justifiés.</p>
+  <p style="margin-top:6px">La Partie empêchée devra notifier l'autre Partie dans un délai de <strong>48 heures</strong> par tout moyen écrit. Si la force majeure persiste au-delà de ${ct.forceMajeureDelai||15} jours, chaque Partie pourra résoudre le contrat par notification écrite, sans indemnité, sous réserve du remboursement des sommes déjà versées déduction faite des frais engagés et dûment justifiés.</p>
 </div>
 
 <div class="art">
@@ -4132,7 +4376,7 @@ body{font-size:12.5px}.contrat-title{font-size:22px;font-weight:800;letter-spaci
 
 <div class="art">
   <div class="art-title">Article 14 – Loi applicable et règlement des litiges</div>
-  <p>Le présent contrat est soumis au droit français. En cas de litige, les Parties s'engagent à rechercher une solution amiable dans un délai de <strong>30 jours</strong> à compter de la notification écrite du différend. À défaut d'accord amiable dans ce délai, le litige sera porté devant les juridictions compétentes du ressort du siège social du Prestataire, auxquelles les Parties font expressément attribution de compétence.</p>
+  <p>Le présent contrat est soumis au droit français. En cas de litige, les Parties s'engagent à rechercher une solution amiable dans un délai de <strong>${ct.delaiAmiable||30} jours</strong> à compter de la notification écrite du différend. À défaut d'accord amiable dans ce délai, le litige sera porté devant les juridictions compétentes du ressort du siège social du Prestataire, auxquelles les Parties font expressément attribution de compétence.</p>
 </div>
 
 <div class="art">
@@ -8309,7 +8553,12 @@ function LogsPage() {
 
 // ── SETTINGS ──────────────────────────────────────────────────────────────────
 function SettingsPage({ data, update }) {
-  const [form, setForm] = useState({ ...INIT.assoc, ...data.assoc });
+  const [form, setForm] = useState({
+    ...INIT.assoc, ...data.assoc,
+    modules: data.assoc?.modules || DEFAULT_MODULES,
+    contractTerms: data.assoc?.contractTerms || DEFAULT_CONTRACT_TERMS,
+    accentColor: data.assoc?.accentColor || C.accent,
+  });
   const [saved, setSaved] = useState(false);
   const fileRef = useRef();
 
@@ -8320,9 +8569,16 @@ function SettingsPage({ data, update }) {
   };
 
   const save = () => {
+    if (form.accentColor) C.accent = form.accentColor;
     update({ assoc: form }, { action: "MODIF", target: "Paramètres", details: "Informations association" });
     setSaved(true); setTimeout(() => setSaved(false), 2000);
   };
+
+  const setMod = (key, val) => setForm(f => ({ ...f, modules: { ...f.modules, [key]: val } }));
+  const setCt = (patch) => setForm(f => ({ ...f, contractTerms: { ...f.contractTerms, ...patch } }));
+  const ct = form.contractTerms || DEFAULT_CONTRACT_TERMS;
+  const accent = form.accentColor || C.accent;
+  const hasContracts = form.modules?.locations || form.modules?.prestations;
 
   return (
     <div>
@@ -8347,7 +8603,56 @@ function SettingsPage({ data, update }) {
             ))}
             <div><label style={s.label}>Note bas de facture</label><textarea style={{ ...s.inp(), resize: "vertical", height: "56px" }} value={form.note||""} onChange={e => setForm({ ...form, note: e.target.value })} placeholder="TVA non applicable, art. 293 B du CGI…" /></div>
           </div>
+
+          {/* ── Couleur principale ── */}
+          <div style={s.card({ marginBottom: "16px" })}>
+            <div style={{ fontFamily: C.display, fontWeight: "700", marginBottom: "14px" }}>Couleur principale</div>
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "14px" }}>
+              {COLOR_PRESETS.map(({ label, color }) => (
+                <div key={color} onClick={() => setForm(f => ({ ...f, accentColor: color }))} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", cursor: "pointer" }}>
+                  <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: color, transition: "all 0.15s",
+                    border: `3px solid ${accent === color ? "#fff" : "transparent"}`,
+                    boxShadow: accent === color ? `0 0 0 2px ${color}` : "none" }} />
+                  <div style={{ fontSize: "9px", color: accent === color ? C.text : C.muted }}>{label}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <input type="color" value={accent} onChange={e => setForm(f => ({ ...f, accentColor: e.target.value }))}
+                style={{ width: "36px", height: "32px", borderRadius: "6px", border: `1px solid ${C.border}`, background: C.card2, cursor: "pointer", padding: "2px" }} />
+              <input type="text" style={s.inp()} value={accent} placeholder="#9d6fe8"
+                onChange={e => { if (/^#[0-9a-fA-F]{0,6}$/.test(e.target.value)) setForm(f => ({ ...f, accentColor: e.target.value })); }} />
+            </div>
+          </div>
+
+          {/* ── Modules ── */}
+          <div style={s.card({ marginBottom: "16px" })}>
+            <div style={{ fontFamily: C.display, fontWeight: "700", marginBottom: "14px" }}>Modules actifs</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              {MODULE_OPTS.map(({ key, label, desc }) => {
+                const on = form.modules?.[key] !== false;
+                return (
+                  <div key={key} onClick={() => setMod(key, !on)} style={{
+                    display: "flex", alignItems: "center", gap: "12px", padding: "9px 12px", borderRadius: "8px",
+                    border: `1px solid ${on ? C.accent+"50" : C.border}`, background: on ? `${C.accent}08` : C.card2,
+                    cursor: "pointer", transition: "all 0.15s",
+                  }}>
+                    <div style={{ width: "18px", height: "18px", borderRadius: "4px", flexShrink: 0,
+                      border: `2px solid ${on ? C.accent : C.border}`, background: on ? C.accent : "transparent",
+                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: "700", color: "#000" }}>
+                      {on ? "✓" : ""}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: "12px", fontWeight: "500", color: on ? C.text : C.muted }}>{label}</div>
+                      <div style={{ fontSize: "10px", color: C.muted }}>{desc}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
+
         <div>
           <div style={s.card({ marginBottom: "16px" })}>
             <div style={{ fontFamily: C.display, fontWeight: "700", marginBottom: "14px" }}>Logo</div>
@@ -8364,7 +8669,7 @@ function SettingsPage({ data, update }) {
             )}
             <input type="file" ref={fileRef} accept="image/*" style={{ display: "none" }} onChange={handleLogo} />
           </div>
-          <div style={s.card()}>
+          <div style={s.card({ marginBottom: "16px" })}>
             <div style={{ fontFamily: C.display, fontWeight: "700", marginBottom: "12px" }}>Aperçu en-tête</div>
             <div style={{ background: "#fff", color: "#111", borderRadius: "8px", padding: "16px", fontSize: "12px" }}>
               {form.logo && <img src={form.logo} alt="" style={{ height: "36px", marginBottom: "8px", display: "block" }} />}
@@ -8374,6 +8679,61 @@ function SettingsPage({ data, update }) {
               {form.siret && <div style={{ color: "#888" }}>SIRET : {form.siret}</div>}
             </div>
           </div>
+
+          {/* ── Termes des contrats ── */}
+          {hasContracts && (
+            <div style={s.card({ marginBottom: "16px" })}>
+              <div style={{ fontFamily: C.display, fontWeight: "700", marginBottom: "14px" }}>Termes des contrats</div>
+              <div style={{ marginBottom: "12px" }}>
+                <label style={s.label}>Acompte à la signature (%)</label>
+                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                  {[20,25,30,40,50].map(v => (
+                    <button key={v} onClick={() => setCt({ acompte: v })}
+                      style={s.btn(ct.acompte===v ? "primary" : "ghost", { padding: "5px 12px", fontSize: "12px" })}>{v}%</button>
+                  ))}
+                  <input type="number" style={s.inp({ width: "65px", padding: "5px 8px" })} value={ct.acompte} min="0" max="100"
+                    onChange={e => setCt({ acompte: parseInt(e.target.value)||30 })} />
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "12px" }}>
+                <div>
+                  <label style={s.label}>Pénalités retard (pts/taux légal)</label>
+                  <input type="number" style={s.inp()} value={ct.penaliteTaux} min="0" step="0.5"
+                    onChange={e => setCt({ penaliteTaux: parseFloat(e.target.value)||5 })} />
+                </div>
+                <div>
+                  <label style={s.label}>Indemnité recouvrement (€)</label>
+                  <input type="number" style={s.inp()} value={ct.penaliteIndemnite} min="0"
+                    onChange={e => setCt({ penaliteIndemnite: parseFloat(e.target.value)||40 })} />
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "12px" }}>
+                <div>
+                  <label style={s.label}>Délai résolution amiable (jours)</label>
+                  <input type="number" style={s.inp()} value={ct.delaiAmiable} min="1"
+                    onChange={e => setCt({ delaiAmiable: parseInt(e.target.value)||30 })} />
+                </div>
+                <div>
+                  <label style={s.label}>Délai force majeure (jours)</label>
+                  <input type="number" style={s.inp()} value={ct.forceMajeureDelai} min="1"
+                    onChange={e => setCt({ forceMajeureDelai: parseInt(e.target.value)||15 })} />
+                </div>
+              </div>
+              <div style={{ fontFamily: C.display, fontWeight: "700", fontSize: "12px", marginBottom: "8px", marginTop: "4px" }}>Politique d'annulation</div>
+              {[
+                { key: "annulationJ30", label: "> 30 jours avant" },
+                { key: "annulationJ15", label: "15–30 jours avant" },
+                { key: "annulationJ8",  label: "8–14 jours avant" },
+                { key: "annulationJ0",  label: "< 8 jours / le jour même" },
+              ].map(({ key, label }) => (
+                <div key={key} style={{ marginBottom: "8px" }}>
+                  <label style={s.label}>{label}</label>
+                  <input type="text" style={s.inp()} value={ct[key]||""}
+                    onChange={e => setCt({ [key]: e.target.value })} />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
       <div style={{ marginTop: "22px" }}>
