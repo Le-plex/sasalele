@@ -1,254 +1,260 @@
-# CLAUDE.md — Guide IA pour Sasalele (Koalisons)
+# CLAUDE.md — Instructions pour l'IA (Sasalele / Koalisons)
 
-Ce fichier est destiné aux modèles IA qui modifient ce projet. Lisez-le en entier avant de faire quoi que ce soit.
-
----
-
-## 1. Vue d'ensemble du projet
-
-**Sasalele** est une application web de gestion associative pour les Koalisons.
-Stack : **React 18 + Vite 5 + Recharts**. Pas de CSS framework. Pas de base de données — persistance via fichiers JSON.
+Lis ce fichier en entier avant de toucher quoi que ce soit.
 
 ---
 
-## 2. Structure des fichiers
+## Contexte
+
+**Sasalele** est une application web de gestion associative pour **les Koalisons** (collectif / asso événementielle, lieu Le Plex).
+Stack : **React 18 + Vite 5 + Recharts**. Pas de framework CSS. Pas de base de données — persistance via fichiers JSON lus/écrits par un middleware Vite côté serveur.
+
+---
+
+## Architecture réelle
+
+### Ce qui fait tourner l'app
 
 ```
-/root/
-├── index.html              # Shell HTML — point d'entrée du navigateur
-├── vite.config.js          # Config Vite + middleware API (lit/écrit les JSON)
-├── package.json            # Dépendances (react, react-dom, recharts)
-│
+/home/koalisons/site/
 ├── src/
-│   ├── main.jsx            # Bootstrap React (monte <App /> dans #root)
-│   ├── koalitales.jsx      # ⭐ FICHIER PRINCIPAL — App complète (monolithe ~5500 lignes)
-│   │
-│   ├── constants.js        # Couleurs (C), catégories, statuts, schéma de données (INIT)
-│   ├── styles.js           # Helpers CSS-in-JS : s.btn(), s.inp(), s.card(), rGrid()
-│   ├── utils.js            # Utilitaires : fmt, sumArr, uid, today, getDays, hashPw...
-│   ├── store.js            # Couche API : load(), save(), loadUsers(), saveUsers()...
-│   ├── roles.js            # RBAC : can(role, perm), getRoles(), setRoles()
-│   │
-│   ├── components/
-│   │   ├── Nav.jsx         # Sidebar desktop + drawer mobile
-│   │   ├── shared.jsx      # Composants réutilisables (Badge, Avatar, Modal, etc.)
-│   │   └── pages/          # Pages modulaires (refactoring en cours, non connectées au monolithe)
-│   │       ├── LoginPage.jsx
-│   │       ├── Dashboard.jsx
-│   │       ├── EventsPage.jsx
-│   │       ├── InventoryPage.jsx
-│   │       └── TeamPage.jsx
-│   │
-│   └── hooks/
-│       └── useMobile.js    # Hook responsive : renvoie true si largeur < 768px
-│
-├── data/                   # ⭐ Données persistantes (ne pas modifier manuellement en prod)
-│   ├── data.json           # Données applicatives principales (événements, dépenses, etc.)
-│   ├── users.json          # Comptes utilisateurs
-│   ├── invites.json        # Codes d'invitation pour l'inscription
-│   ├── roles.json          # Config des rôles/permissions (personnalisable)
-│   └── logs.json           # Journal d'activité
-│
-└── dist/                   # Build de production (généré par `npm run build`, ne pas éditer)
+│   ├── main.jsx           # Bootstrap React — monte <App /> dans #root, rien d'autre
+│   └── koalitales.jsx     # ⭐ MONOLITHE ~9000 lignes — TOUTE l'app est ici
+├── vite.config.js         # Config Vite + middleware API (toutes les routes /api/*)
+├── index.html             # Shell HTML
+├── package.json
+├── install.sh             # Script d'installation automatique (bash)
+└── data/                  # Données persistantes — NON versionnées (gitignored)
+    ├── data.json          # Données applicatives principales
+    ├── users.json         # Comptes utilisateurs (hash, token, permissions)
+    ├── invites.json       # Codes d'invitation
+    ├── roles.json         # Rôles personnalisés
+    ├── logs.json          # Journal d'activité
+    └── uploads/           # Fichiers uploadés (logos, avatars, PDFs)
 ```
 
-### Point critique : deux couches coexistent
-
-- **`src/koalitales.jsx`** (monolithe) : c'est le **vrai fichier qui fait tourner l'app**. Il contient tout en un seul fichier (constantes, utilitaires, composants, pages). `main.jsx` l'importe directement.
-- **`src/constants.js`, `src/styles.js`, etc.** + **`src/components/pages/*.jsx`** : refactoring modulaire en cours. Ces fichiers existent et sont cohérents mais **ne sont pas encore connectés au monolithe**. Les pages `src/components/pages/` importent bien depuis `src/constants.js`, `src/styles.js`, etc.
-
----
-
-## 3. Comment l'application fonctionne
+**Il n'y a pas de** `src/constants.js`, `src/styles.js`, `src/store.js`, `src/roles.js`, ni de `src/components/`. Tout est dans `koalitales.jsx`.
 
 ### Démarrage
+
 ```bash
-npm run dev    # Lance Vite sur http://0.0.0.0:80
-npm run build  # Build prod dans /dist/
+# Le service systemd tourne déjà en prod :
+systemctl status sasalele
+
+# Pour dev / tester une modif :
+cd /home/koalisons/site
+npm run dev    # Vite sur port 3000 (iptables redirige 80 → 3000 en prod)
 ```
 
-### Flux de données
-```
-Navigateur → React App (src/koalitales.jsx)
-          → fetch('/api/data')  → vite.config.js middleware → data/data.json
-          → fetch('/api/users') → vite.config.js middleware → data/users.json
-```
+### Serveur
 
-L'API est simulée par un middleware Vite dans `vite.config.js` :
-- `GET /api/xxx` → lit le fichier JSON correspondant dans `data/`
-- `POST /api/xxx` → écrit le fichier JSON correspondant dans `data/`
-
-### Authentification
-- Pas de JWT, pas de session serveur
-- Session stockée dans `localStorage` (`session` key)
-- Mot de passe haché : `btoa(unescape(encodeURIComponent(pw + "_k0ali")))`
-- Superadmin : username `le_plex` avec rôle `superadmin` (hardcodé)
+L'app tourne en **mode dev Vite** (pas un build statique). C'est intentionnel : le middleware `configureServer` dans `vite.config.js` expose toutes les routes `/api/*`. Un `vite build` + `vite preview` **ne fonctionnerait pas** (pas d'API).
 
 ---
 
-## 4. Système de design
+## Structure de koalitales.jsx
 
-### Palette de couleurs (thème sombre)
+Dans l'ordre du fichier :
+
+| Section | Contenu |
+|---------|---------|
+| `const C = {...}` | Design tokens (couleurs, polices) — objet module-level |
+| Utilitaires | `fmt`, `sumArr`, `uid`, `today`, `hashPw`, `renamePersonInData` |
+| `const s = {...}` | Helpers CSS-in-JS : `s.btn()`, `s.inp()`, `s.card()`, `s.label` |
+| `const store` | Couche API : `load()`, `save()`, `loadUsers()`, `saveUsers()`, `uploadFile()`, etc. |
+| `const auth` | Auth : `setup()`, `login()`, `check()`, `logout()`, `createUser()`, etc. |
+| `function App()` | Composant racine — gère session, routing, data globale |
+| `function SetupPage()` | Page de première configuration (si aucun utilisateur) |
+| `function LoginPage()` | Connexion + inscription par code d'invitation |
+| `function Nav()` | Sidebar desktop + drawer mobile |
+| Pages | `DashboardPage`, `EventsPage`, `FacturesPage`, `InventairePage`, `ReunionsPage`, `PrestationsPage`, `ContactsPage`, `DepensesPage`, `ComptaPage`, `JournalPage`, `AssociationPage`, `UsersPage`, `MaintenancePage`, `SuggestionsPage`, `TodosPage` |
+
+---
+
+## Tokens de design (objet `C`)
+
 ```javascript
-C.bg        = "#080810"  // Fond principal
-C.sidebar   = "#0c0c16"  // Fond sidebar
-C.card      = "#111120"  // Fond carte
-C.card2     = "#181828"  // Fond carte secondaire
-C.border    = "#22223a"  // Bordures
-C.accent    = "#9d6fe8"  // Violet — actions principales
-C.danger    = "#ff4d72"  // Rouge — actions destructives
-C.warn      = "#ffb84d"  // Orange — avertissements
-C.info      = "#4db8ff"  // Cyan — info
-C.text      = "#eff0ff"  // Texte principal
-C.muted     = "#7878a0"  // Texte secondaire
+C.bg        = "#080810"   // Fond principal
+C.sidebar   = "#0c0c16"   // Fond sidebar
+C.card      = "#111120"   // Fond carte
+C.card2     = "#181828"   // Fond carte secondaire
+C.border    = "#22223a"   // Bordures
+C.accent    = "#9d6fe8"   // Violet — actions principales
+C.accentBg  = "#1e1030"   // Fond accent
+C.danger    = "#ff4d72"   // Rouge — destructif
+C.dangerBg  = "#2a0f18"
+C.warn      = "#ffb84d"   // Orange — avertissement
+C.info      = "#4db8ff"   // Cyan — info
+C.text      = "#eff0ff"   // Texte principal
+C.muted     = "#7878a0"   // Texte secondaire
+C.font      = "'DM Sans', sans-serif"
+C.mono      = "'DM Mono', monospace"
+C.display   = "'Syne', sans-serif"
 ```
 
-### Polices
-- `'Syne'` — titres (display)
-- `'DM Sans'` — corps de texte
-- `'DM Mono'` — nombres, codes
+Patterns fréquents dans le code :
+- `${C.accent}18` → accent à ~10% opacité (hex alpha)
+- `${C.accent}40` → accent à ~25% opacité
+- `${C.danger}12` → danger très transparent
 
-### Helpers de style (dans `src/styles.js`)
+---
+
+## Flux de données
+
+```
+Navigateur
+  → React (koalitales.jsx)
+  → fetch('/api/data')   → vite.config.js → data/data.json
+  → fetch('/api/users')  → vite.config.js → data/users.json
+  → fetch('/api/logs')   → vite.config.js → data/logs.json
+```
+
+### Modifier les données depuis un composant
+
 ```javascript
-s.btn(C.accent)   // Bouton avec couleur de fond
-s.inp()           // Champ de saisie
-s.card()          // Conteneur carte
-rGrid(isMobile, cols, gap)  // CSS grid responsive
+// update() est fourni par App en prop à chaque page
+update({ assoc: { ...data.assoc, name: "Nouveau nom" } })
+
+// Avec entrée de journal (optionnel mais recommandé)
+update(
+  { events: [...data.events, newEvent] },
+  { action: "AJOUT", target: "Événements", details: `Création de "${newEvent.name}"` }
+)
 ```
 
-### Responsive
-- Breakpoint : 768px
-- Hook : `const isMobile = useMobile()`
-- En mobile : navigation par drawer, grilles en colonne unique
+**Toutes les mutations** passent par `update(patch, logEntry?)`. Jamais d'écriture directe.
 
 ---
 
-## 5. Règles à respecter lors des modifications
+## Authentification
 
-### Règles absolues
-1. **Ne jamais redéfinir** `C`, `s`, `store`, `uid`, `today`, `can` dans un composant — toujours importer depuis `src/`.
-2. **Toutes les mutations de données** doivent passer par `update(patch, logEntry)` fourni par le composant App.
-3. **Format de log** (paramètre optionnel mais recommandé) :
-   ```javascript
-   update(patch, { action: 'AJOUT' | 'MODIF' | 'SUPPR', target: 'NomPage', details: 'Description' })
-   ```
-4. **Vérifier les permissions** avant toute action sensible : `can(user.role, 'nomPermission')`.
-5. **Nouveaux composants > 300 lignes** → les séparer dans `src/components/`.
-
-### Conventions de code
-- CSS inline via objets JavaScript (pas de fichiers `.css`)
-- Pas de Redux, pas de Context API — props drilling classique depuis `App`
-- IDs générés avec `uid()` (8 chars aléatoires base36)
-- Dates au format ISO `YYYY-MM-DD` (via `today()`)
-- Montants en euros avec `fmt(n)` (locale fr-FR)
+- Token aléatoire stocké dans `localStorage` (clé `kt_token`)
+- Hash mot de passe : `btoa(unescape(encodeURIComponent(pw + "_k0ali")))`
+- Premier utilisateur créé via `SetupPage` (affiché si `users.json` est vide) — rôle `root`
+- Inscription par code d'invitation uniquement (sauf premier user)
+- Déconnexion automatique à minuit (cron root qui met tous les tokens à `null`)
 
 ---
 
-## 6. Permissions (RBAC)
+## Permissions (RBAC)
 
-| Permission | superadmin | admin | orga | compta | lecture |
-|---|---|---|---|---|---|
-| manageUsers | ✓ | ✓ | | | |
-| manageSettings | ✓ | | | | |
-| createEvents | ✓ | ✓ | ✓ | | |
-| editEvents | ✓ | ✓ | ✓ | | |
-| deleteEvents | ✓ | ✓ | | | |
-| addExpenses | ✓ | ✓ | ✓ | | |
-| editExpenses | ✓ | ✓ | ✓ | ✓ | |
-| addRevenues | ✓ | ✓ | ✓ | | |
-| createInvoices | ✓ | ✓ | | ✓ | |
-| manageCatalog | ✓ | ✓ | ✓ | ✓ | |
-| manageInventory | ✓ | ✓ | ✓ | | |
-| managePrestations | ✓ | ✓ | ✓ | | |
+Vérification : `can("nom_permission")` — `can` est destructuré depuis `session` dans chaque page.
 
-Vérification : `if (!can(user.role, 'createEvents')) return null;`
+| Permission | Description |
+|---|---|
+| `create_event` | Créer des événements |
+| `edit_event` | Modifier / supprimer des événements |
+| `invoices` | Gérer les factures |
+| `settings` | Modifier les paramètres association |
+| `catalog` | Gérer le catalogue tarifaire |
+| `manage_users` | Gérer les utilisateurs et rôles |
+| `manage_inventory` | Gérer l'inventaire matériel |
+| `manage_meetings` | Gérer les réunions |
+| `manage_prestations` | Gérer les prestations |
+| `manage_depenses` | Gérer dépenses et remboursements |
+| `manage_treasury` | Comptabilité — confirmer remboursements |
+| `web_admin` | Administration (maintenance, sauvegardes, mises à jour) |
+
+Le rôle `root` (premier compte créé) a toutes les permissions.
 
 ---
 
-## 7. Schéma des données (`data/data.json`)
+## Routes API (vite.config.js)
 
-Structure principale de l'objet `data` :
+| Endpoint | Méthode | Description |
+|---|---|---|
+| `/api/data` | GET / POST | Données principales (data.json) |
+| `/api/users` | GET / POST | Utilisateurs (users.json) |
+| `/api/invites` | GET / POST | Codes d'invitation |
+| `/api/roles` | GET / POST | Rôles personnalisés |
+| `/api/logs` | GET / POST | Journal d'activité |
+| `/api/upload` | POST | Upload fichier → `data/uploads/` |
+| `/api/delete-upload` | POST | Supprime un fichier uploadé |
+| `/uploads/<fichier>` | GET | Sert les fichiers uploadés |
+| `/api/export` | GET | Télécharge `data/` en `.tar.gz` |
+| `/api/import` | POST | Restaure une archive `.tar.gz` |
+| `/api/update-check` | GET | Vérifie si des commits sont dispo sur origin/main |
+| `/api/update-apply` | POST | `git pull` + `npm install` si besoin + restart |
+| `/api/qonto-config` | GET / POST | Config API Qonto (secrets hors dossier site) |
+| `/api/qonto-sync` | POST | Synchronise le solde bancaire depuis Qonto |
+| `/api/notify` | POST | Envoie une notification Telegram |
+
+---
+
+## Schéma `data.json`
+
 ```javascript
 {
-  events: [          // Liste des événements
-    {
-      id, name, date, dateEnd,
-      budget, team,  // team: array de usernames
-      expenses: [{ id, label, cat, amount, paidBy, date, settled, settledDate }],
-      revenues: [{ id, label, type, amount, date }],
-      settlements: [{ id, from, to, amount, date }],
-      gear: [{ id, itemId, qty, days }],
-      lineup: [{ id, artist, set, stage }],
-      services: [{ id, label, status, amount, assignedTo }],
-    }
-  ],
-  expenses: [],      // Dépenses globales asso (même structure que events.expenses)
-  inventory: [       // Catalogue matériel
-    { id, name, cat, qty, price, priceType, location }
-    // priceType: '/jour' | '/heure' | '/forfait'
-  ],
-  invoices: [],      // Factures
-  meetings: [],      // Réunions
-  prestations: [],   // Prestations avec statut
-  settings: {        // Paramètres de l'association
-    name, logo, address, email, phone, iban, siret, maintenanceMode
-  }
+  assoc: { name, logo, address, email, phone, iban, siret, note, bankBalance, bankThreshold, bankLastSync },
+  events: [{
+    id, name, date, budget,
+    team: [{ id, name }],
+    gear: [{ id, name, qty }],
+    members: [{ id, name }],                  // pool tricount de l'event
+    expenses: [{ id, label, amount, category, paidBy, date, bankCoverage }],
+    revenues: [{ id, label, type, amount, date }],
+    settlements: [{ id, settled, settledDate, confirmed?, confirmedBy?, confirmedDate? }],
+    financiallyClosed?
+  }],
+  catalog: [{ id, name, unitPrice, unit, description }],
+  invoices: [{ id, number, clientName, clientAddress, date, items[], notes, createdAt }],
+  inventory: [{ id, name, category, qty, price, priceType, location }],
+  meetings: [{ id, date, location, agenda, attendees, notes, crFile?: { name, url }, createdAt }],
+  prestations: [{ id, label, statut, date, client{}, team[], gear[], services[], expenses[] }],
+  contacts: [{ id, name, type, description, address, email, phone, createdAt }],
+  depenses: [{
+    id, label, amount, category, paidBy, date, bankCoverage, archived?,
+    participants: [{ name }],
+    reimbursements: [{ id, from, to, amount, settled, settledDate, confirmed?, confirmedBy?, confirmedDate? }]
+  }],
+  depensesPool: [{ name }],    // pool global pour le tricount asso
+  maintenance: { enabled, message },
+  notification: { active, message, date },
+  todos: [{ id, text, done, createdAt }],
+  tickets: [{ id, title, body, status, createdAt }],
+  locations: [],
 }
 ```
 
-Catégories de dépenses (`CATS`) : Logistique, Communication, Technique, Restauration, Administratif, Autre
-Types de revenus (`REV_TYPES`) : Billetterie, Subvention, Sponsoring, Bénévolat, Autre
+---
+
+## Infra VPS
+
+- **OS** : Ubuntu/Debian
+- **User système** : `koalisons` (non-root) — le service tourne sous ce user
+- **Dossier app** : `/home/koalisons/site/`
+- **Repo git** : dans `/home/koalisons/site/` (remote : `https://github.com/Le-plex/sasalele.git`)
+- **Service** : `sasalele.service` (systemd) — `Restart=on-failure`
+- **Port** : Vite écoute sur 3000, iptables redirige 80 → 3000
+- **Secrets Qonto** : `/home/koalisons/qonto-secrets.json` (hors dossier site, hors scope Vite)
+- **Telegram** : bot `@k0al1bot`, token dans `/etc/telegram.conf`, script `/usr/local/bin/tg-notify`
+- **Déconnexion auto** : cron root — `0 0 * * *` → `/usr/local/bin/sasalele-logout-all`
 
 ---
 
-## 8. Modifications fréquentes — Comment faire
+## Règles pour les modifications
 
-### Ajouter une nouvelle page
-1. Créer `src/components/pages/MaPage.jsx`
-2. Dans `src/koalitales.jsx`, ajouter dans le `switch(page)` :
-   ```javascript
-   case 'mapage': return <MaPage data={data} user={user} update={update} />;
+1. **Tout modifier dans `/home/koalisons/site/src/koalitales.jsx`** et/ou `vite.config.js` — c'est là que tourne l'app
+2. **Après chaque session de modifs** : copier les fichiers dans `/root/` puis commit + push sur `Le-plex/sasalele`
+   ```bash
+   cp /home/koalisons/site/src/koalitales.jsx /root/src/
+   cp /home/koalisons/site/vite.config.js /root/
+   git -C /root add src/koalitales.jsx vite.config.js
+   git -C /root commit -m "feat: ..."
+   git -C /root push origin main
    ```
-3. Ajouter l'entrée dans le composant `Nav` (tableau `pages`)
-4. Ajouter la permission requise si nécessaire dans `roles.js`
-
-### Modifier les couleurs
-Éditer l'objet `C` dans `src/koalitales.jsx` (lignes 5-23) **et** dans `src/constants.js` pour cohérence.
-
-### Ajouter un champ à un événement
-1. Ajouter dans le schéma `INIT` de `src/constants.js`
-2. Ajouter dans le formulaire de création/édition dans `EventsPage`
-3. Penser à la migration : les anciens événements n'auront pas ce champ → utiliser `item.monChamp ?? valeurDefaut`
-
-### Modifier les rôles/permissions par défaut
-Éditer `PERMS_DEFAULT` et `ROLES_DEFAULT` dans `src/constants.js` (et dans le monolithe si applicable).
+3. **Ne jamais faire `npm run build`** — inutile et trompeur, l'app tourne en dev Vite
+4. **Ne jamais modifier `data/*.json` directement** — passer par l'API ou l'interface
+5. **CSS inline uniquement** — pas de fichiers `.css`, tout en objet JS avec `s.btn()`, `s.inp()`, `s.card()`
+6. **Pas de librairies supplémentaires** sans en discuter — le projet est intentionnellement minimaliste
+7. **IDs** : `uid()` (8 chars base36). **Dates** : `today()` (ISO YYYY-MM-DD). **Montants** : `fmt(n)` (locale fr-FR €)
 
 ---
 
-## 9. Pièges à éviter
+## Pièges à éviter
 
-- **Ne pas modifier `data/*.json` directement en production** — passer toujours par l'API `/api/xxx`
-- **Le build de prod (`/dist/`) n'a pas de backend API** — il faut un serveur Node pour les endpoints `/api/`
-- **Le hashPw est Base64, pas bcrypt** — ne jamais exposer en prod réelle sans améliorer ça
-- **Pas de protection contre les écritures concurrentes** sur les fichiers JSON — app mono-utilisateur/faible concurrence seulement
-- **`/dist/` est généré** — ne jamais éditer les fichiers dans `dist/`, ils seront écrasés au prochain build
-- **Les pages dans `src/components/pages/`** n'importent pas depuis le monolithe — elles sont autonomes et utilisent `src/constants.js`, etc.
-
----
-
-## 10. Commandes utiles
-
-```bash
-npm run dev      # Développement sur port 80
-npm run build    # Build production → /dist/
-npm run preview  # Prévisualiser le build
-
-# Structure des fichiers sources React
-src/main.jsx          # Point d'entrée JS
-src/koalitales.jsx    # App principale
-src/constants.js      # Tokens de design et schéma
-src/styles.js         # Helpers de style
-src/utils.js          # Fonctions utilitaires
-src/store.js          # API persistence
-src/roles.js          # Gestion des rôles
-```
+- Le `git safe.directory` doit être configuré pour `/home/koalisons/site` : `git config --system --add safe.directory /home/koalisons/site`
+- Le `.git` dans `/home/koalisons/site/` doit appartenir à `koalisons` : `chown -R koalisons:koalisons /home/koalisons/site/.git`
+- `${C.accent}50` est une concaténation de chaîne hex — ça ne fonctionnerait pas avec des CSS variables
+- L'app gère les fichiers uploadés en base64 legacy (anciens enregistrements) ET en URL `/uploads/xxx` (nouveau) — penser à la rétrocompat : `item.crFile?.url || item.crFile?.data`
+- `depensesPool` et les noms dans `depenses` sont liés — utiliser `renamePersonInData()` pour les renommer de manière cohérente
