@@ -8771,7 +8771,23 @@ function MaintenancePage({ data, update, session }) {
   const [importStatus, setImportStatus] = useState(null);
   const importInputRef = useRef(null);
 
-  const doExport = () => { window.location.href = '/api/export'; };
+  const doExport = async () => {
+    try {
+      const res = await fetch('/api/export');
+      if (!res.ok) throw new Error('Erreur serveur');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sasalele-backup-${new Date().toISOString().split('T')[0]}.tar.gz`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('Erreur lors de l\'export : ' + e.message);
+    }
+  };
 
   const selectImportFile = (e) => {
     const file = e.target.files?.[0];
