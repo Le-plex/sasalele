@@ -4731,8 +4731,33 @@ ${vehicles.length > 0 ? `<div class="section-title">Répartition des équipes</d
                   </div>
                 )}
               </div>
-              {expTotal > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.muted }}>Dépenses engagées</span><span style={{ fontFamily: C.mono, color: C.danger }}>−{fmt(expTotal)}</span></div>}
-              {expTotal > 0 && <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "600" }}><span>Marge nette</span><span style={{ fontFamily: C.mono, color: total - expTotal >= 0 ? C.accent : C.danger }}>{fmt(total - expTotal)}</span></div>}
+              {(() => {
+                const billedTransport = p.customPrice != null ? (p.customPriceAddTransport ? calcTrTotal : 0) : calcTrTotal;
+                const realRevenue = total - billedTransport;
+                const margin = realRevenue - expTotal;
+                const showBreakdown = billedTransport > 0 || expTotal > 0;
+                if (!showBreakdown) return null;
+                return <>
+                  <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: "8px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px" }}>
+                      <span style={{ color: C.muted }}>Total facturé</span>
+                      <span style={{ fontFamily: C.mono }}>{fmt(total)}</span>
+                    </div>
+                    {billedTransport > 0 && <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px" }}>
+                      <span style={{ color: C.muted }}>Transport (remboursement)</span>
+                      <span style={{ fontFamily: C.mono, color: C.danger }}>−{fmt(billedTransport)}</span>
+                    </div>}
+                    {expTotal > 0 && <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px" }}>
+                      <span style={{ color: C.muted }}>Dépenses engagées</span>
+                      <span style={{ fontFamily: C.mono, color: C.danger }}>−{fmt(expTotal)}</span>
+                    </div>}
+                    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "700", borderTop: `1px solid ${C.border}`, paddingTop: "6px" }}>
+                      <span>Marge réelle</span>
+                      <span style={{ fontFamily: C.mono, color: margin >= 0 ? C.accent : C.danger }}>{fmt(margin)}</span>
+                    </div>
+                  </div>
+                </>;
+              })()}
             </div>
           </div>
           <div style={s.card()}>
