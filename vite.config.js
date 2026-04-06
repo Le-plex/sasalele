@@ -275,19 +275,22 @@ function makeApiPlugin() {
           const files = (changedFiles || '').trim().split('\n').filter(Boolean)
           const needsInstall = files.includes('package.json')
           const needsRestart = files.some(f => f === 'vite.config.js' || f === 'package.json')
-          execFile('git', ['pull', 'origin', 'main'], { cwd }, (pullErr, pullOut) => {
-            if (pullErr) { res.statusCode = 500; res.end(JSON.stringify({ error: 'git pull échoué : ' + pullErr.message })); return }
-            const finish = () => {
-              res.end(JSON.stringify({ ok: true, needsRestart, needsInstall, log: pullOut.trim() }))
-              if (needsRestart) {
-                setTimeout(() => execFile('systemctl', ['restart', 'sasalele'], { detached: true }, () => {}), 1500)
+          execFile('git', ['fetch', 'origin'], { cwd }, (fetchErr) => {
+            if (fetchErr) { res.statusCode = 500; res.end(JSON.stringify({ error: 'git fetch échoué : ' + fetchErr.message })); return }
+            execFile('git', ['reset', '--hard', 'origin/main'], { cwd }, (resetErr, resetOut) => {
+              if (resetErr) { res.statusCode = 500; res.end(JSON.stringify({ error: 'git reset échoué : ' + resetErr.message })); return }
+              const finish = () => {
+                res.end(JSON.stringify({ ok: true, needsRestart, needsInstall, log: resetOut.trim() }))
+                if (needsRestart) {
+                  setTimeout(() => execFile('systemctl', ['restart', 'sasalele'], { detached: true }, () => {}), 1500)
+                }
               }
-            }
-            if (needsInstall) {
-              execFile('npm', ['install', '--silent'], { cwd }, () => finish())
-            } else {
-              finish()
-            }
+              if (needsInstall) {
+                execFile('npm', ['install', '--silent'], { cwd }, () => finish())
+              } else {
+                finish()
+              }
+            })
           })
         })
       })
