@@ -182,10 +182,16 @@ function makeApiPlugin() {
         if (req.method !== 'GET') { res.statusCode = 405; res.end('{"error":"method not allowed"}'); return }
         const date = new Date().toISOString().split('T')[0]
         const filename = `sasalele-backup-${date}.tar.gz`
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
-        res.setHeader('Content-Type', 'application/gzip')
         const tar = spawn('tar', ['-czf', '-', 'data'], { cwd: path.resolve('.') })
-        tar.stdout.pipe(res)
+        const chunks = []
+        tar.stdout.on('data', chunk => chunks.push(chunk))
+        tar.stdout.on('end', () => {
+          const buf = Buffer.concat(chunks)
+          res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+          res.setHeader('Content-Type', 'application/gzip')
+          res.setHeader('Content-Length', buf.length)
+          res.end(buf)
+        })
         tar.stderr.on('data', () => {})
         tar.on('error', () => { if (!res.headersSent) { res.statusCode = 500; res.end() } })
       })
