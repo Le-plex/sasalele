@@ -2650,6 +2650,7 @@ function LocationDetail({ loc, locations, inventory, catalog, assoc, update, cal
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "20px", flexWrap: "wrap" }}>
         <button style={s.btn("ghost")} onClick={onBack}>← Locations</button>
+        <span style={{ fontFamily: C.mono, fontSize: "12px", color: C.accent, background: `${C.accent}18`, padding: "3px 8px", borderRadius: "5px", whiteSpace: "nowrap" }}>{loc.number}</span>
         <span style={{ fontFamily: C.display, fontSize: "20px", fontWeight: "800", flex: 1 }}>{loc.label}</span>
         <Badge color={locStatutColor(loc.statut)}>{loc.statut}</Badge>
         <select style={{ ...s.inp(), width: "auto", fontSize: "12px" }} value={loc.statut} onChange={e => updLoc({ statut: e.target.value })}>
@@ -2974,6 +2975,7 @@ function LocationDetail({ loc, locations, inventory, catalog, assoc, update, cal
 function LocationPage({ data, update }) {
   const [view, setView] = useState("list");
   const [detailId, setDetailId] = useState(null);
+  const [search, setSearch] = useState("");
   const EMPTY_LOC = { label: "", statut: "Devis", dateStart: today(), dateEnd: today(), timeStart: "", timeEnd: "", client: { name: "", address: "", email: "", phone: "" }, items: [], services: [], notes: "" };
   const [form, setForm] = useState(EMPTY_LOC);
   const [creating, setCreating] = useState(false);
@@ -3342,7 +3344,7 @@ ${loc.notes?`<div style="padding:12px;background:#f8f8f8;border-radius:8px;font-
   // ─── LIST VIEW ───
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "28px", flexWrap: "wrap", gap: "12px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
         <div>
           <h1 style={{ fontFamily: C.display, fontSize: "26px", fontWeight: "800", letterSpacing: "-0.8px", marginBottom: "4px" }}>Locations</h1>
           <p style={{ color: C.muted, fontSize: "13px" }}>
@@ -3351,7 +3353,10 @@ ${loc.notes?`<div style="padding:12px;background:#f8f8f8;border-radius:8px;font-
               <span style={{ color: C.accent }}> · {locations.filter(l => l.statut === "Confirmé" || l.statut === "En cours").length} active{locations.filter(l => l.statut === "Confirmé" || l.statut === "En cours").length > 1 ? "s" : ""}</span>}
           </p>
         </div>
-        <button style={s.btn("primary")} onClick={() => setCreating(!creating)}>+ Nouvelle location</button>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+          <input style={{ ...s.inp(), width: "220px", fontSize: "13px" }} placeholder="Rechercher (nom, réf…)" value={search} onChange={e => setSearch(e.target.value)} />
+          <button style={s.btn("primary")} onClick={() => setCreating(!creating)}>+ Nouvelle location</button>
+        </div>
       </div>
 
       {creating && (
@@ -3377,7 +3382,7 @@ ${loc.notes?`<div style="padding:12px;background:#f8f8f8;border-radius:8px;font-
         {locations.length === 0 && !creating && (
           <div style={{ color: C.muted, textAlign: "center", padding: "70px", fontSize: "14px" }}>Aucune location enregistrée.</div>
         )}
-        {[...locations].reverse().map(loc => {
+        {[...locations].reverse().filter(loc => !search || loc.label.toLowerCase().includes(search.toLowerCase()) || (loc.number||"").toLowerCase().includes(search.toLowerCase()) || (loc.client?.name||"").toLowerCase().includes(search.toLowerCase())).map(loc => {
           const total = loc.customPrice != null ? loc.customPrice + (loc.customPriceAddTransport ? calcTransportCost(loc.transport) : 0) : locTotal(loc);
           const days = calcDays(loc.dateStart, loc.dateEnd);
           return (
@@ -3385,9 +3390,9 @@ ${loc.notes?`<div style="padding:12px;background:#f8f8f8;border-radius:8px;font-
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px" }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px", flexWrap: "wrap" }}>
+                    <span style={{ fontFamily: C.mono, fontSize: "11px", color: C.accent, background: `${C.accent}18`, padding: "2px 7px", borderRadius: "4px" }}>{loc.number}</span>
                     <span style={{ fontFamily: C.display, fontSize: "15px", fontWeight: "700" }}>{loc.label}</span>
                     <Badge color={locStatutColor(loc.statut)}>{loc.statut}</Badge>
-                    <span style={{ color: C.muted, fontSize: "11px" }}>{loc.number}</span>
                   </div>
                   <div style={{ color: C.muted, fontSize: "12px", marginBottom: "8px", display: "flex", gap: "14px", flexWrap: "wrap" }}>
                     <span>{loc.dateStart}{loc.timeStart ? ` ${loc.timeStart}` : ""} → {loc.dateEnd}{loc.timeEnd ? ` ${loc.timeEnd}` : ""}</span>
@@ -3928,11 +3933,12 @@ const statutColor = (st) => st === "Confirmé" || st === "Terminé" ? "green" : 
 function PrestationsPage({ data, update, users, contacts = [] }) {
   const [creating, setCreating] = useState(false);
   const [detailId, setDetailId] = useState(null);
+  const [search, setSearch] = useState("");
   const [form, setForm] = useState({ label: "", statut: "Demande", dateStart: today(), timeStart: "", dateEnd: today(), timeEnd: "", notes: "" });
 
   const create = () => {
     if (!form.label.trim()) return;
-    const newP = { id: uid(), label: form.label, statut: form.statut, date: form.dateStart,
+    const newP = { id: uid(), number: `PREST-${Date.now().toString().slice(-6)}`, label: form.label, statut: form.statut, date: form.dateStart,
       dateStart: form.dateStart, timeStart: form.timeStart, dateEnd: form.dateEnd, timeEnd: form.timeEnd,
       notes: form.notes, client: { name: "", address: "", email: "", phone: "" }, team: [], gear: [], services: [], expenses: [], amount: 0 };
     update({ prestations: [...(data.prestations||[]), newP] }, { action: "AJOUT", target: "Prestations", details: form.label });
@@ -3952,7 +3958,7 @@ function PrestationsPage({ data, update, users, contacts = [] }) {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "28px", flexWrap: "wrap", gap: "12px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
         <div>
           <h1 style={{ fontFamily: C.display, fontSize: "26px", fontWeight: "800", letterSpacing: "-0.8px", marginBottom: "4px" }}>Prestations</h1>
           <p style={{ color: C.muted, fontSize: "13px" }}>
@@ -3961,7 +3967,10 @@ function PrestationsPage({ data, update, users, contacts = [] }) {
             {byStatut("Demande") > 0 && <span style={{ color: C.warn }}> · {byStatut("Demande")} en attente</span>}
           </p>
         </div>
-        <button style={s.btn("primary")} onClick={() => setCreating(!creating)}>+ Nouvelle prestation</button>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+          <input style={{ ...s.inp(), width: "220px", fontSize: "13px" }} placeholder="Rechercher (nom, réf…)" value={search} onChange={e => setSearch(e.target.value)} />
+          <button style={s.btn("primary")} onClick={() => setCreating(!creating)}>+ Nouvelle prestation</button>
+        </div>
       </div>
 
       {creating && (
@@ -3987,7 +3996,7 @@ function PrestationsPage({ data, update, users, contacts = [] }) {
         {prestations.length === 0 && !creating && (
           <div style={{ color: C.muted, textAlign: "center", padding: "70px", fontSize: "14px" }}>Aucune prestation enregistrée.</div>
         )}
-        {[...prestations].reverse().map(p => {
+        {[...prestations].reverse().filter(p => !search || p.label.toLowerCase().includes(search.toLowerCase()) || (p.number||"").toLowerCase().includes(search.toLowerCase()) || (p.client?.name||"").toLowerCase().includes(search.toLowerCase())).map(p => {
           const gearTotal = (p.gear||[]).reduce((a, g) => a + g.qty*g.unitPrice*g.days, 0);
           const svcTotal  = (p.services||[]).reduce((a, sv) => a + sv.qty*sv.unitPrice, 0);
           const trTotal   = calcTransportCost(p.transport);
@@ -3999,6 +4008,7 @@ function PrestationsPage({ data, update, users, contacts = [] }) {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px", flexWrap: "wrap" }}>
+                    {p.number && <span style={{ fontFamily: C.mono, fontSize: "11px", color: C.accent, background: `${C.accent}18`, padding: "2px 7px", borderRadius: "4px" }}>{p.number}</span>}
                     <span style={{ fontFamily: C.display, fontSize: "16px", fontWeight: "700" }}>{p.label}</span>
                     <Badge color={statutColor(p.statut)}>{p.statut}</Badge>
                   </div>
@@ -4627,6 +4637,7 @@ ${vehicles.length > 0 ? `<div class="section-title">Répartition des équipes</d
         <button style={s.btn("ghost", { padding: "7px 12px", fontSize: "12px" })} onClick={back}>← Retour</button>
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+            {p.number && <span style={{ fontFamily: C.mono, fontSize: "12px", color: C.accent, background: `${C.accent}18`, padding: "3px 8px", borderRadius: "5px", whiteSpace: "nowrap" }}>{p.number}</span>}
             <h1 style={{ fontFamily: C.display, fontSize: "22px", fontWeight: "800", letterSpacing: "-0.5px" }}>{p.label}</h1>
             <Badge color={statutColor(p.statut)}>{p.statut}</Badge>
           </div>
