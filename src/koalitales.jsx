@@ -1182,7 +1182,8 @@ function Dashboard({ data, goEvent, go, session, update, can }) {
   const dbTotProduits =
     events.reduce((a,e) => a+(e.revenues||[]).reduce((b,r) => b+((e.revenueConfirmations||{})[r.id]?.confirmed ? r.amount : 0), 0), 0)
     + prestations.filter(p2=>p2.paymentConfirmed).reduce((a,p2)=>a+dbPrestCalcTotal(p2),0)
-    + locations.filter(l=>l.paymentConfirmed).reduce((a,l)=>a+dbLocCalcTotal(l),0);
+    + locations.filter(l=>l.paymentConfirmed).reduce((a,l)=>a+dbLocCalcTotal(l),0)
+    + (data.recettesExternes||[]).reduce((a,r)=>a+r.amount,0);
   const dbTotCharges = totExpEv + totDepGl + prestations.reduce((a,p2)=>a+sumArr(p2.expenses||[],"amount"),0);
   const dbBilanNet = dbTotProduits - dbTotCharges;
 
