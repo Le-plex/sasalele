@@ -438,7 +438,7 @@ export default function App() {
         {page === "inventory"    && (can("manage_inventory")   ? <InventoryPage data={data} update={update} /> : <AccessDenied />)}
         {page === "meetings"     && (can("manage_meetings")    ? <MeetingsPage data={data} update={update} /> : <AccessDenied />)}
         {page === "prestations"  && (can("manage_prestations") ? <PrestationsPage data={data} update={update} session={session} users={users} contacts={data.contacts||[]} /> : <AccessDenied />)}
-        {page === "locations"    && (can("manage_prestations") ? <LocationPage data={data} update={update} /> : <AccessDenied />)}
+        {page === "locations"    && (can("manage_prestations") ? <LocationPage data={data} update={update} session={session} /> : <AccessDenied />)}
         {page === "contacts"     && <ContactsPage data={data} update={update} />}
         {page === "compta"       && <ComptaPage data={data} update={update} can={can} session={session} />}
         {page === "depenses"     && <DepensesPage data={data} update={update} users={users} session={session} can={can} />}
@@ -1309,7 +1309,10 @@ function Dashboard({ data, goEvent, go, session, update, can }) {
         const prioColor = { haute: C.danger, normale: C.info, basse: C.muted };
         const stColor   = { à_faire: C.muted, en_cours: C.warn, terminé: C.accent };
         const isAdmin   = can && can("web_admin");
-        const setStatus = (id, status) => update({ todos: (data.todos||[]).map(t => t.id !== id ? t : { ...t, status, statusBy: username, statusAt: today() }) });
+        const setStatus = (id, status) => update(
+          { todos: (data.todos||[]).map(t => t.id !== id ? t : { ...t, status, statusBy: username, statusAt: today() }) },
+          { action: "MODIF", target: "Tâches", details: `${status} — ${data.todos?.find(t => t.id === id)?.title || id}` }
+        );
         return (
           <div style={s.card({ marginBottom: "24px" })}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
@@ -2973,7 +2976,7 @@ function LocationDetail({ loc, locations, inventory, catalog, assoc, update, cal
   );
 }
 
-function LocationPage({ data, update }) {
+function LocationPage({ data, update, session }) {
   const [view, setView] = useState("list");
   const [detailId, setDetailId] = useState(null);
   const [search, setSearch] = useState("");
@@ -3053,6 +3056,7 @@ ${(loc.services||[]).map(s=>`<tr><td>${s.label}</td><td style="text-align:center
 <footer>${assoc.name||"Association"} · Généré le ${new Date().toLocaleDateString("fr-FR")}</footer>
 </body></html>`;
     const w = window.open("", "_blank"); w.document.write(html); w.document.close(); w.onload = () => w.print();
+    fetch('/api/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event: 'doc_print', docType: 'Liste matériel', ref: `${loc.number || ''} – ${loc.label || ''}`, username: session?.user?.username || '?' }) });
   };
 
   const printDevis = (loc) => {
@@ -3101,6 +3105,7 @@ ${loc.notes?`<div style="padding:12px;background:#f8f8f8;border-radius:8px;font-
 <footer>${assoc.iban?`IBAN : ${assoc.iban}<br>`:""}${assoc.name||"Association"} · Généré le ${new Date().toLocaleDateString("fr-FR")}</footer>
 </body></html>`;
     const w = window.open("", "_blank"); w.document.write(html); w.document.close(); w.onload = () => w.print();
+    fetch('/api/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event: 'doc_print', docType: 'Devis', ref: `${loc.number || ''} – ${loc.label || ''}`, username: session?.user?.username || '?' }) });
   };
 
   const printContrat = (loc) => {
@@ -3284,6 +3289,7 @@ ${loc.notes?`<div class="art"><div class="art-title">Notes complémentaires</div
 <footer><span>${assoc.name||"Association"}${assoc.siret?" — SIRET "+assoc.siret:""}</span><span>Document généré le ${today_str}</span></footer>
 </body></html>`;
     const w = window.open("", "_blank"); w.document.write(html); w.document.close(); w.onload = () => w.print();
+    fetch('/api/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event: 'doc_print', docType: 'Contrat', ref: `${loc.number || ''} – ${loc.label || ''}`, username: session?.user?.username || '?' }) });
   };
 
   const printFacture = (loc) => {
@@ -3330,6 +3336,7 @@ ${loc.notes?`<div style="padding:12px;background:#f8f8f8;border-radius:8px;font-
 <footer>${assoc.iban?`IBAN : ${assoc.iban}<br>`:""}${assoc.name||"Association"} · Facture générée le ${new Date().toLocaleDateString("fr-FR")}</footer>
 </body></html>`;
     const w = window.open("", "_blank"); w.document.write(html); w.document.close(); w.onload = () => w.print();
+    fetch('/api/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event: 'doc_print', docType: 'Facture', ref: `${loc.number || ''} – ${loc.label || ''}`, username: session?.user?.username || '?' }) });
   };
 
   if (view === "detail" && detailId) {
@@ -4657,7 +4664,10 @@ ${vehicles.length > 0 ? `<div class="section-title">Répartition des équipes</d
             {p.client?.name ? ` · ${p.client.name}` : ""}
           </p>
         </div>
-        <select value={p.statut} onChange={e => upd({ statut: e.target.value })} style={s.inp({ width: "auto", padding: "6px 12px", fontSize: "12px" })}>
+        <select value={p.statut} onChange={e => update(
+          { prestations: data.prestations.map(x => x.id === p.id ? { ...x, statut: e.target.value } : x) },
+          { action: "MODIF", target: "Prestations", details: `${e.target.value} — ${p.label}` }
+        )} style={s.inp({ width: "auto", padding: "6px 12px", fontSize: "12px" })}>
           {PRESTATION_STATUTS.map(st => <option key={st}>{st}</option>)}
         </select>
       </div>

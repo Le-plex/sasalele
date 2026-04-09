@@ -170,14 +170,16 @@ function makeApiPlugin() {
         req.on('data', chunk => body += chunk)
         req.on('end', () => {
           try {
-            const { event, username } = JSON.parse(body)
+            const parsed = JSON.parse(body)
+            const { event, username, docType, ref } = parsed
             const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || ''
             let msg = ''
             if (event === 'login_ok')     msg = `🌐 Site — Connexion\n👤 ${username}\n🌐 IP : ${ip}`
             else if (event === 'login_fail') msg = `⚠️ Site — Tentative ratée\n👤 ${username}\n🌐 IP : ${ip}`
             else if (event === 'logout')  msg = `🌐 Site — Déconnexion\n👤 ${username}\n🌐 IP : ${ip}`
+            else if (event === 'doc_print') msg = `🖨️ Sasalele — Document généré\n📄 ${docType || '?'}\n📋 ${ref || '—'}\n👤 ${username || '?'}`
             if (msg && !IS_WINDOWS && fs.existsSync('/usr/local/bin/tg-notify'))
-              execFile('/usr/local/bin/tg-notify', [msg, ip], () => {})
+              execFile('/usr/local/bin/tg-notify', [msg, event === 'doc_print' ? '' : ip], () => {})
             res.end('{"ok":true}')
           } catch { res.statusCode = 400; res.end('{"error":"bad request"}') }
         })
@@ -346,7 +348,39 @@ function makeApiPlugin() {
       server.middlewares.use('/api/invites', handle(INVITES_FILE))
       server.middlewares.use('/api/roles',   handle(ROLES_FILE))
       server.middlewares.use('/api/data',    handle(DATA_FILE, 'null'))
-      server.middlewares.use('/api/logs',    handle(LOGS_FILE))
+
+      // ── Journal d'activité + notification Telegram automatique ──
+      server.middlewares.use('/api/logs', (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method === 'GET') {
+          res.end(readJson(LOGS_FILE))
+        } else if (req.method === 'POST') {
+          let body = ''
+          req.on('data', chunk => body += chunk)
+          req.on('end', () => {
+            try {
+              const incoming = JSON.parse(body)
+              if (Array.isArray(incoming) && incoming.length > 0 && incoming[0]?.id) {
+                let currentFirstId = null
+                try {
+                  const cur = JSON.parse(readJson(LOGS_FILE, '[]'))
+                  if (Array.isArray(cur) && cur.length > 0) currentFirstId = cur[0]?.id
+                } catch {}
+                if (incoming[0].id !== currentFirstId && !IS_WINDOWS && fs.existsSync('/usr/local/bin/tg-notify')) {
+                  const e = incoming[0]
+                  const ICONS = { AJOUT: '✅', SUPPR: '🗑️', MODIF: '✏️', 'GÉNÈRE': '🖨️' }
+                  const icon = ICONS[e.action] || '📋'
+                  const msg = `${icon} Sasalele — ${e.action} ${e.target}\n👤 ${e.user || '?'}\n📝 ${e.details || '—'}`
+                  execFile('/usr/local/bin/tg-notify', [msg], () => {})
+                }
+              }
+              writeJson(LOGS_FILE, body, res)
+            } catch { res.statusCode = 400; res.end('{"error":"bad request"}') }
+          })
+        } else {
+          res.statusCode = 405; res.end('{"error":"method not allowed"}')
+        }
+      })
     }
   }
 }
