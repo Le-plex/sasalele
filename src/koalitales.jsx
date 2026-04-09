@@ -3165,9 +3165,11 @@ footer{border-top:1px solid #eee;padding-top:12px;color:#aaa;font-size:11px;marg
 
 <div class="art">
   <div class="art-title">Article 2 – Matériel loué</div>
-  <table><thead><tr><th>Désignation</th><th style="text-align:center">Quantité</th></tr></thead><tbody>
-  ${(loc.items||[]).map(i=>`<tr><td>${i.itemName}</td><td style="text-align:center">${i.qty}</td></tr>`).join("")}
+  <table><thead><tr><th>Désignation</th><th style="text-align:center">Qté</th><th style="text-align:center">Jours</th><th class="amt">PU/jour</th><th class="amt">Total${loc.customPrice != null ? " indicatif" : ""}</th></tr></thead><tbody>
+  ${(loc.items||[]).map(i=>`<tr><td>${i.itemName}</td><td style="text-align:center">${i.qty}</td><td style="text-align:center">${i.priceType==="/jour"?i.days:"—"}</td><td class="amt">${fmt(i.unitPrice||0)}</td><td class="amt">${fmt(itemTotal(i))}</td></tr>`).join("")}
+  <tr class="tf"><td colspan="4">Sous-total matériel</td><td class="amt">${fmt((loc.items||[]).reduce((a,i)=>a+itemTotal(i),0))}</td></tr>
   </tbody></table>
+  ${loc.customPrice != null ? `<p style="font-size:11px;color:#888;background:#fffbe6;border-left:3px solid #f0a000;padding:6px 10px;margin-top:8px"><strong>Prix indicatifs :</strong> les tarifs unitaires ci-dessus correspondent aux tarifs catalogue et sont fournis à titre informatif uniquement. Conformément à l'accord préalable entre les parties, le prix forfaitaire applicable est celui mentionné à l'article ${hasSvc?4:3} – Conditions financières${trCostC > 0 && loc.customPriceAddTransport ? `, auquel s'ajoutent les frais de transport` : ""}.</p>` : ""}
   <p style="font-size:11px;color:#888">Un état des lieux contradictoire sera réalisé au départ et au retour du matériel. Tout matériel non mentionné est exclu du présent contrat. Le Loueur se réserve le droit de substituer un équipement par un matériel aux caractéristiques équivalentes ou supérieures.</p>
 </div>
 
