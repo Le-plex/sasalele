@@ -2602,6 +2602,7 @@ function LocationDetail({ loc, locations, inventory, catalog, assoc, update, cal
   const [clientDraft, setClientDraft] = useState(loc.client || {});
   const [editDates, setEditDates] = useState(false);
   const [datesDraft, setDatesDraft] = useState({ dateStart: loc.dateStart, dateEnd: loc.dateEnd, timeStart: loc.timeStart||"", timeEnd: loc.timeEnd||"" });
+  const [uploadingContract, setUploadingContract] = useState(false);
 
   const days = calcDays(loc.dateStart, loc.dateEnd);
   const calcTotal = locTotal(loc);
@@ -2611,6 +2612,14 @@ function LocationDetail({ loc, locations, inventory, catalog, assoc, update, cal
   const updLoc = (patch) => {
     update({ locations: locations.map(l => l.id !== loc.id ? l : { ...l, ...patch }) });
   };
+
+  const uploadSignedContract = async (file) => {
+    setUploadingContract(true);
+    const result = await store.uploadFile(file);
+    updLoc({ signedContract: { name: result.originalName, url: result.url } });
+    setUploadingContract(false);
+  };
+  const removeSignedContract = () => updLoc({ signedContract: null });
 
   const addItem = (invItem) => {
     const d = calcDays(loc.dateStart, loc.dateEnd);
@@ -2718,6 +2727,20 @@ function LocationDetail({ loc, locations, inventory, catalog, assoc, update, cal
             {[["Liste matériel", () => printMateriel(loc)],["Devis", () => printDevis(loc)],["Contrat", () => printContrat(loc)],["Facture", () => printFacture(loc)]].map(([label, fn]) => (
               <button key={label} style={{ ...s.btn("ghost"), textAlign: "left", fontSize: "12px" }} onClick={fn}>⬡ {label}</button>
             ))}
+          </div>
+          <div style={{ borderTop: `1px solid ${C.border}`, marginTop: "10px", paddingTop: "10px" }}>
+            <div style={{ fontSize: "11px", color: C.muted, marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Contrat signé</div>
+            {loc.signedContract ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <a href={loc.signedContract.url} download={loc.signedContract.name} style={{ flex: 1, fontSize: "12px", color: C.accent, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{loc.signedContract.name}</a>
+                <button style={{ ...s.btn("ghost"), padding: "3px 7px", fontSize: "11px", color: C.danger, flexShrink: 0 }} onClick={removeSignedContract}>✕</button>
+              </div>
+            ) : (
+              <label style={{ display: "block", cursor: "pointer" }}>
+                <input type="file" style={{ display: "none" }} onChange={e => { if (e.target.files[0]) uploadSignedContract(e.target.files[0]); e.target.value = ""; }} />
+                <span style={{ ...s.btn("ghost"), display: "block", textAlign: "center", fontSize: "12px", color: C.muted, opacity: uploadingContract ? 0.5 : 1 }}>{uploadingContract ? "Upload…" : "+ Joindre le contrat signé"}</span>
+              </label>
+            )}
           </div>
         </div>
       </div>
@@ -4080,6 +4103,15 @@ function calcPrestationTotal(p) {
 function PrestationDetail({ prestation: p, data, update, back, users, contacts = [], pool = [] }) {
   const upd = (patch) => update({ prestations: data.prestations.map(x => x.id === p.id ? { ...x, ...patch } : x) });
   const [tab, setTab] = useState("overview");
+  const [uploadingContract, setUploadingContract] = useState(false);
+
+  const uploadSignedContract = async (file) => {
+    setUploadingContract(true);
+    const result = await store.uploadFile(file);
+    upd({ signedContract: { name: result.originalName, url: result.url } });
+    setUploadingContract(false);
+  };
+  const removeSignedContract = () => upd({ signedContract: null });
 
   // Duration helpers
   const parseDT = (date, time) => date ? new Date(`${date}${time ? "T"+time : "T00:00"}`) : null;
@@ -5559,6 +5591,21 @@ ${vehicles.length > 0 ? `<div class="section-title">Répartition des équipes</d
                 </div>
               ))}
             </div>
+          </div>
+          <div style={s.card()}>
+            <div style={{ fontFamily: C.display, fontWeight: "700", fontSize: "15px", marginBottom: "8px", color: C.accent }}>Contrat signé</div>
+            <p style={{ color: C.muted, fontSize: "13px", marginBottom: "14px", lineHeight: "1.5" }}>Joignez ici le contrat signé par le client. Le fichier est stocké sur le serveur et accessible à tout moment.</p>
+            {p.signedContract ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", background: `${C.accent}10`, border: `1px solid ${C.accent}30`, borderRadius: "8px", padding: "10px 14px" }}>
+                <a href={p.signedContract.url} download={p.signedContract.name} style={{ flex: 1, fontSize: "13px", color: C.accent, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.signedContract.name}</a>
+                <button style={{ ...s.btn("ghost"), padding: "4px 9px", fontSize: "12px", color: C.danger, flexShrink: 0 }} onClick={removeSignedContract}>Supprimer</button>
+              </div>
+            ) : (
+              <label style={{ display: "block", cursor: "pointer" }}>
+                <input type="file" style={{ display: "none" }} onChange={e => { if (e.target.files[0]) uploadSignedContract(e.target.files[0]); e.target.value = ""; }} />
+                <span style={{ ...s.btn("primary", { width: "100%", display: "block", textAlign: "center", opacity: uploadingContract ? 0.5 : 1 }) }}>{uploadingContract ? "Upload en cours…" : "+ Joindre le contrat signé"}</span>
+              </label>
+            )}
           </div>
         </div>
       )}
